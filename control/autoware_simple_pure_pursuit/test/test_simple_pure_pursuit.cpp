@@ -65,11 +65,11 @@ protected:
     return node_->calc_longitudinal_control(odom, target_longitudinal_vel);
   }
 
-  autoware_control_msgs::msg::Lateral calc_steering_angle(
+  autoware_control_msgs::msg::Lateral calc_lateral_control(
     const Odometry & odom, const Trajectory & traj, const double target_longitudinal_vel,
     const size_t closest_traj_point_idx) const
   {
-    return node_->calc_steering_angle(odom, traj, target_longitudinal_vel, closest_traj_point_idx);
+    return node_->calc_lateral_control(odom, traj, target_longitudinal_vel, closest_traj_point_idx);
   }
 
   double speed_proportional_gain() const { return node_->speed_proportional_gain_; }
@@ -134,7 +134,7 @@ TEST_F(SimplePurePursuitNodeTest, calc_lateral_control)
     const size_t closest_traj_point_idx = 0;
 
     const auto result =
-      calc_steering_angle(odom, traj, target_longitudinal_vel, closest_traj_point_idx);
+      calc_lateral_control(odom, traj, target_longitudinal_vel, closest_traj_point_idx);
 
     EXPECT_DOUBLE_EQ(result.steering_tire_angle, 0.0f);
   }
@@ -145,7 +145,7 @@ TEST_F(SimplePurePursuitNodeTest, calc_lateral_control)
     const size_t closest_traj_point_idx = 8;
 
     const auto result =
-      calc_steering_angle(odom, traj, target_longitudinal_vel, closest_traj_point_idx);
+      calc_lateral_control(odom, traj, target_longitudinal_vel, closest_traj_point_idx);
 
     EXPECT_DOUBLE_EQ(result.steering_tire_angle, 0.0f);
   }
