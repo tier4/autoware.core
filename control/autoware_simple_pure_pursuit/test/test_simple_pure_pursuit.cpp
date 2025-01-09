@@ -59,6 +59,12 @@ protected:
     return node_->create_control_command(odom, traj);
   }
 
+  autoware_control_msgs::msg::Longitudinal calc_longitudinal_control(
+    const Odometry & odom, const double target_longitudinal_vel) const
+  {
+    return node_->calc_longitudinal_control(odom, target_longitudinal_vel);
+  }
+
   autoware_control_msgs::msg::Lateral calc_steering_angle(
     const Odometry & odom, const Trajectory & traj, const double target_longitudinal_vel,
     const size_t closest_traj_point_idx) const
@@ -105,7 +111,20 @@ TEST_F(SimplePurePursuitNodeTest, create_control_command)
   }
 }
 
-TEST_F(SimplePurePursuitNodeTest, calc_steering_angle)
+TEST_F(SimplePurePursuitNodeTest, calc_longitudinal_control)
+{
+  {  // normal case
+    const auto odom = makeOdometry(0.0, 0.0, 0.0);
+    const auto target_longitudinal_vel = 1.0;
+
+    const auto result = calc_longitudinal_control(odom, target_longitudinal_vel);
+
+    EXPECT_DOUBLE_EQ(result.velocity, 1.0);
+    EXPECT_DOUBLE_EQ(result.acceleration, speed_proportional_gain() * 1.0);
+  }
+}
+
+TEST_F(SimplePurePursuitNodeTest, calc_lateral_control)
 {
   const auto traj = autoware::test_utils::generateTrajectory<Trajectory>(10, 1.0);
 
