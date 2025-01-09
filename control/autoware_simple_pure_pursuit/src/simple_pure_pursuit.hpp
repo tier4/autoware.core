@@ -67,6 +67,9 @@ private:
   autoware_control_msgs::msg::Lateral calc_steering_angle(
     const Odometry & odom, const Trajectory & traj, const double target_longitudinal_vel,
     const size_t closest_traj_point_idx) const;
+
+public:
+  friend class SimplePurePursuitNodeTest;
 };
 
 }  // namespace autoware::control::simple_pure_pursuit
