@@ -19,6 +19,7 @@
 #include <rclcpp/node.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_point_with_lane_id.hpp>
+#include <geometry_msgs/msg/point.hpp>
 
 #include <gtest/gtest.h>
 
@@ -28,12 +29,20 @@
 
 using autoware::behavior_velocity_planner::StopLineModule;
 
+geometry_msgs::msg::Point make_geom_point(const double x, const double y)
+{
+  geometry_msgs::msg::Point p;
+  p.x = x;
+  p.y = y;
+  p.z = 0.0;
+  return p;
+}
+
 autoware_internal_planning_msgs::msg::PathPointWithLaneId path_point(double x, double y)
 {
-  autoware_internal_planning_msgs::msg::PathPointWithLaneId p;
-  p.point.pose.position.x = x;
-  p.point.pose.position.y = y;
-  return p;
+  autoware_internal_planning_msgs::msg::PathPointWithLaneId point;
+  point.point.pose.position = make_geom_point(x, y);
+  return point;
 }
 
 class StopLineModuleTest : public ::testing::Test
@@ -74,7 +83,7 @@ protected:
     clock_ = std::make_shared<rclcpp::Clock>();
 
     module_ = std::make_shared<StopLineModule>(
-      1, stop_line_, planner_param_, rclcpp::get_logger("test_logger"), clock_,
+      1, stop_line_, 0, planner_param_, rclcpp::get_logger("test_logger"), clock_,
       std::make_shared<autoware_utils::TimeKeeper>(),
       std::make_shared<autoware::planning_factor_interface::PlanningFactorInterface>(
         node_.get(), "test_stopline"));
@@ -114,6 +123,7 @@ TEST_F(StopLineModuleTest, TestGetEgoAndStopPoint)
 
   EXPECT_DOUBLE_EQ(ego_s, 5.0);
   EXPECT_DOUBLE_EQ(stop_point_s.value(), 5.0);
+}
 }
 
 TEST_F(StopLineModuleTest, TestUpdateStateAndStoppedTime)
