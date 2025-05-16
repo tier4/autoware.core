@@ -19,7 +19,6 @@
 #include <rclcpp/node.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_point_with_lane_id.hpp>
-#include <geometry_msgs/msg/point.hpp>
 
 #include <gtest/gtest.h>
 
@@ -29,20 +28,13 @@
 
 using autoware::behavior_velocity_planner::StopLineModule;
 
-geometry_msgs::msg::Point make_geom_point(const double x, const double y)
-{
-  geometry_msgs::msg::Point p;
-  p.x = x;
-  p.y = y;
-  p.z = 0.0;
-  return p;
-}
-
 autoware_internal_planning_msgs::msg::PathPointWithLaneId path_point(double x, double y)
 {
-  autoware_internal_planning_msgs::msg::PathPointWithLaneId point;
-  point.point.pose.position = make_geom_point(x, y);
-  return point;
+  autoware_internal_planning_msgs::msg::PathPointWithLaneId p;
+  p.point.pose.position.x = x;
+  p.point.pose.position.y = y;
+  p.lane_ids = {0};
+  return p;
 }
 
 class StopLineModuleTest : public ::testing::Test
