@@ -124,7 +124,6 @@ TEST_F(StopLineModuleTest, TestGetEgoAndStopPoint)
   EXPECT_DOUBLE_EQ(ego_s, 5.0);
   EXPECT_DOUBLE_EQ(stop_point_s.value(), 5.0);
 }
-}
 
 TEST_F(StopLineModuleTest, TestUpdateStateAndStoppedTime)
 {
