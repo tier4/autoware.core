@@ -14,14 +14,11 @@
 
 #include "autoware/localization_util/covariance_ellipse.hpp"
 
-#include <tf2/utils.h>
+#include <tf2/utils.hpp>
+
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <algorithm>
-#ifdef ROS_DISTRO_GALACTIC
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#else
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#endif
 
 namespace autoware::localization_util
 {

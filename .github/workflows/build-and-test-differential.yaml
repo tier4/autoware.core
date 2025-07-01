@@ -17,16 +17,27 @@ env:
   CXX: /usr/lib/ccache/g++
 
 jobs:
-  make-sure-label-is-present:
-    uses: autowarefoundation/autoware-github-actions/.github/workflows/make-sure-label-is-present.yaml@v1
+  require-label:
+    uses: autowarefoundation/autoware-github-actions/.github/workflows/require-label.yaml@v1
     with:
-      label: tag:run-build-and-test-differential
+      label: run:build-and-test-differential
 
   build-and-test-differential:
-    needs: make-sure-label-is-present
-    if: ${{ needs.make-sure-label-is-present.outputs.result == 'true' }}
+    needs: require-label
+    if: ${{ needs.require-label.outputs.result == 'true' }}
     runs-on: ubuntu-24.04
-    container: ghcr.io/autowarefoundation/autoware:core-devel
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rosdistro:
+          - humble
+          - jazzy
+        include:
+          - rosdistro: humble
+            container: ghcr.io/autowarefoundation/autoware:core-common-devel
+          - rosdistro: jazzy
+            container: ros:jazzy
     steps:
       - name: Set PR fetch depth
         run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1 ))" >> "${GITHUB_ENV}"
@@ -41,14 +52,13 @@ jobs:
       - name: Run build-and-test-differential action
         uses: ./.github/actions/build-and-test-differential
         with:
-          rosdistro: humble
-          build-depends-repos: build_depends.repos
+          rosdistro: ${{ matrix.rosdistro }}
           codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
   clang-tidy-differential:
     needs: build-and-test-differential
     runs-on: ubuntu-24.04
-    container: ghcr.io/autowarefoundation/autoware:core-devel
+    container: ghcr.io/autowarefoundation/autoware:core-common-devel
     steps:
       - name: Set PR fetch depth
         run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1 ))" >> "${GITHUB_ENV}"
@@ -83,7 +93,37 @@ jobs:
           target-packages: ${{ steps.get-modified-packages.outputs.modified-packages }}
           target-files: ${{ steps.get-changed-files.outputs.changed-files }}
           clang-tidy-config-url: https://raw.githubusercontent.com/autowarefoundation/autoware/main/.clang-tidy-ci
-          build-depends-repos: build_depends.repos
+          underlay-workspace: /opt/autoware
 
       - name: Show disk space after the tasks
         run: df -h
+
+  build-and-test-packages-above-differential:
+    needs: require-label
+    if: ${{ needs.require-label.outputs.result == 'true' }}
+    runs-on: ubuntu-24.04
+    container: ghcr.io/autowarefoundation/autoware:core-common-devel
+    steps:
+      - name: Set PR fetch depth
+        run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1 ))" >> "${GITHUB_ENV}"
+
+      - name: Checkout PR branch and all PR commits
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ env.PR_FETCH_DEPTH }}
+
+      - name: Clone above dependency packages
+        run: |
+          mkdir -p dependency_ws
+          vcs import dependency_ws < packages_above.repos
+        shell: bash
+
+      - name: Remove exec_depend
+        uses: autowarefoundation/autoware-github-actions/remove-exec-depend@v1
+
+      - name: Run build-and-test-differential action
+        uses: ./.github/actions/build-and-test-differential
+        with:
+          rosdistro: humble
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
