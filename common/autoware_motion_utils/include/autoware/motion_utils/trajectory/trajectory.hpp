@@ -16,6 +16,7 @@
 #define AUTOWARE__MOTION_UTILS__TRAJECTORY__TRAJECTORY_HPP_
 
 #include <Eigen/Geometry>
+#include <autoware/interpolation/spline_interpolation_points_2d.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_geometry/pose_deviation.hpp>
 #include <autoware_utils_math/constants.hpp>
@@ -1931,59 +1932,11 @@ void insertOrientationAsArc(T & points, const bool is_driving_forward)
     return;
   }
 
-  // Calculate the tangent direction of an intermediate point by treating 3 consecutive points as an arc
-  // and applying the alternate segment theorem.
+  const auto yaw_vec = interpolation::splineYawFromPoints(points);
   for (size_t i = 0; i < points.size(); ++i) {
-    if (i == 0) {  // use line direction
-      const auto & src_point = autoware_utils_geometry::get_point(points.at(i));
-      const auto & dst_point = autoware_utils_geometry::get_point(points.at(i + 1));
-      const double pitch = autoware_utils_geometry::calc_elevation_angle(src_point, dst_point);
-      const double yaw = autoware_utils_geometry::calc_azimuth_angle(src_point, dst_point);
-      autoware_utils_geometry::set_orientation(
-        autoware_utils_geometry::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
-      continue;
-    }
-    if (i == points.size() - 1) {  // use line direction
-      const auto & src_point = autoware_utils_geometry::get_point(points.at(i - 1));
-      const auto & dst_point = autoware_utils_geometry::get_point(points.at(i));
-      const double pitch = autoware_utils_geometry::calc_elevation_angle(src_point, dst_point);
-      const double yaw = autoware_utils_geometry::calc_azimuth_angle(src_point, dst_point);
-      autoware_utils_geometry::set_orientation(
-        autoware_utils_geometry::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
-      continue;
-    }
-
-    const auto & src_point = autoware_utils_geometry::get_point(points.at(i - 1));
-    const auto & mid_point = autoware_utils_geometry::get_point(points.at(i));
-    const auto & dst_point = autoware_utils_geometry::get_point(points.at(i + 1));
-
-    const double pitch = autoware_utils_geometry::calc_elevation_angle(mid_point, dst_point);
-
-    const Eigen::Vector2d dst_from_src(dst_point.x - src_point.x, dst_point.y - src_point.y);
-    const Eigen::Vector2d mid_from_src(mid_point.x - src_point.x, mid_point.y - src_point.y);
-    const Eigen::Vector2d dst_from_mid(dst_point.x - mid_point.x, dst_point.y - mid_point.y);
-
-    const double dot = dst_from_src.dot(mid_from_src);
-    const double cross = dst_from_src[0] * mid_from_src[1] - dst_from_src[1] * mid_from_src[0];
-    Eigen::Matrix2d rotation_matrix_with_scale;
-    rotation_matrix_with_scale << dot, -cross, cross, dot;
-    const Eigen::Vector2d yaw_vec = rotation_matrix_with_scale * dst_from_mid;
-    const double yaw = std::atan2(yaw_vec.y(), yaw_vec.x());
-
+    const auto yaw = yaw_vec.at(i) * (is_driving_forward ? 1.0 : -1.0);
     autoware_utils_geometry::set_orientation(
-      autoware_utils_geometry::create_quaternion_from_rpy(0.0, pitch, yaw), points.at(i));
-  }
-
-  if (!is_driving_forward) {
-    for (size_t i = 0; i < points.size(); ++i) {
-      const auto original_pose = autoware_utils_geometry::get_pose(points.at(i));
-      const auto rotation_180 = autoware_utils_geometry::create_quaternion_from_yaw(M_PI);
-      geometry_msgs::msg::Pose rotation_pose;
-      rotation_pose.orientation = rotation_180;
-      const auto rotated_pose =
-        autoware_utils_geometry::transform_pose(rotation_pose, original_pose);
-      autoware_utils_geometry::set_orientation(rotated_pose.orientation, points.at(i));
-    }
+      autoware_utils_geometry::create_quaternion_from_yaw(0.0, 0.0, yaw), points.at(i));
   }
 }
 
