@@ -15,6 +15,7 @@
 #include "node.hpp"
 
 #include <autoware/motion_utils/resample/resample.hpp>
+#include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/velocity_smoother/smoother/analytical_jerk_constrained_smoother/analytical_jerk_constrained_smoother.hpp>
 #include <autoware/velocity_smoother/trajectory_utils.hpp>
@@ -389,14 +390,18 @@ void MotionVelocityPlannerNode::insert_slowdown(
   autoware_planning_msgs::msg::Trajectory & trajectory,
   const autoware::motion_velocity_planner::SlowdownInterval & slowdown_interval) const
 {
+  const double overlap_threshold = 5e-2;
+  const auto from_arc_length = motion_utils::calcSignedArcLength(trajectory.points, 0UL, slowdown_interval.from);
+  const auto to_arc_length = motion_utils::calcSignedArcLength(trajectory.points, 0UL, slowdown_interval.to);
+  const auto from_p= motion_utils::calcInterpolatedPose(trajectory.points, from_arc_length).position;
+  const auto to_p= motion_utils::calcInterpolatedPose(trajectory.points, to_arc_length).position;
   const auto from_seg_idx =
-    autoware::motion_utils::findNearestSegmentIndex(trajectory.points, slowdown_interval.from);
+    autoware::motion_utils::findNearestSegmentIndex(trajectory.points, from_p);
   const auto from_insert_idx = autoware::motion_utils::insertTargetPoint(
-    from_seg_idx, slowdown_interval.from, trajectory.points);
+    from_seg_idx, from_p, trajectory.points, overlap_threshold);
   const auto to_seg_idx =
-    autoware::motion_utils::findNearestSegmentIndex(trajectory.points, slowdown_interval.to);
-  const auto to_insert_idx =
-    autoware::motion_utils::insertTargetPoint(to_seg_idx, slowdown_interval.to, trajectory.points);
+    autoware::motion_utils::findNearestSegmentIndex(trajectory.points, to_p);
+  const auto to_insert_idx = autoware::motion_utils::insertTargetPoint(to_seg_idx, to_p, trajectory.points, overlap_threshold);
   if (from_insert_idx && to_insert_idx) {
     for (auto idx = *from_insert_idx; idx <= *to_insert_idx; ++idx) {
       trajectory.points[idx].longitudinal_velocity_mps =
