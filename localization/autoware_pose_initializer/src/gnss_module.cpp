@@ -27,12 +27,20 @@ GnssModule::GnssModule(rclcpp::Node * node)
   clock_(node->get_clock()),
   timeout_(node->declare_parameter<double>("gnss_pose_timeout"))
 {
+  RCLCPP_INFO(node->get_logger(), "GnssModule: Creating subscription to 'gnss_pose_cov' topic, timeout=%.1f", timeout_);
   sub_gnss_pose_ = node->create_subscription<PoseWithCovarianceStamped>(
     "gnss_pose_cov", 1, std::bind(&GnssModule::on_pose, this, std::placeholders::_1));
 }
 
 void GnssModule::on_pose(PoseWithCovarianceStamped::ConstSharedPtr msg)
 {
+  RCLCPP_INFO(
+    rclcpp::get_logger("gnss_module"),
+    "GNSS pose received: stamp=%.3f, position=(%.3f, %.3f, %.3f)",
+    msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9,
+    msg->pose.pose.position.x,
+    msg->pose.pose.position.y,
+    msg->pose.pose.position.z);
   pose_ = msg;
 }
 
@@ -41,6 +49,7 @@ geometry_msgs::msg::PoseWithCovarianceStamped GnssModule::get_pose()
   using Initialize = autoware::component_interface_specs::localization::Initialize;
 
   if (!pose_) {
+    RCLCPP_ERROR(rclcpp::get_logger("gnss_module"), "get_pose: No GNSS pose received yet");
     autoware_adapi_v1_msgs::msg::ResponseStatus respose_status;
     respose_status.success = false;
     respose_status.code = Initialize::Service::Response::ERROR_GNSS;
@@ -49,6 +58,10 @@ geometry_msgs::msg::PoseWithCovarianceStamped GnssModule::get_pose()
   }
 
   const auto elapsed = rclcpp::Time(pose_->header.stamp) - clock_->now();
+  RCLCPP_INFO(
+    rclcpp::get_logger("gnss_module"),
+    "get_pose: Checking timeout - elapsed=%.3fs, timeout=%.1fs",
+    elapsed.seconds(), timeout_);
   if (timeout_ < elapsed.seconds()) {
     autoware_adapi_v1_msgs::msg::ResponseStatus respose_status;
     respose_status.success = false;

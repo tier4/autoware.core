@@ -34,9 +34,13 @@ PoseInitializer::PoseInitializer(const rclcpp::NodeOptions & options)
 : rclcpp::Node("pose_initializer", options),
   group_srv_(create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive))
 {
+  RCLCPP_INFO(get_logger(), "PoseInitializer constructor started");
+
   rclcpp::QoS qos_state(1);
   qos_state.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   qos_state.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+
+  RCLCPP_INFO(get_logger(), "Creating publisher and service...");
   pub_state_ = create_publisher<State::Message>(
     State::name, autoware::component_interface_specs::get_qos<State>());
   srv_initialize_ = create_service<Initialize::Service>(
@@ -50,30 +54,40 @@ PoseInitializer::PoseInitializer(const rclcpp::NodeOptions & options)
   diagnostics_pose_reliable_ = std::make_unique<autoware_utils_diagnostics::DiagnosticsInterface>(
     this, "pose_initializer_status");
 
+  RCLCPP_INFO(get_logger(), "Initializing modules...");
+
   if (declare_parameter<bool>("ekf_enabled")) {
+    RCLCPP_INFO(get_logger(), "EKF module enabled");
     ekf_localization_trigger_ = std::make_unique<EkfLocalizationTriggerModule>(this);
   }
   if (declare_parameter<bool>("gnss_enabled")) {
+    RCLCPP_INFO(get_logger(), "GNSS module enabled");
     gnss_ = std::make_unique<GnssModule>(this);
   }
   if (declare_parameter<bool>("yabloc_enabled")) {
+    RCLCPP_INFO(get_logger(), "Yabloc module enabled");
     yabloc_ = std::make_unique<LocalizationModule>(this, "yabloc_align");
   }
   if (declare_parameter<bool>("ndt_enabled")) {
+    RCLCPP_INFO(get_logger(), "NDT module enabled");
     ndt_ = std::make_unique<LocalizationModule>(this, "ndt_align");
     ndt_localization_trigger_ = std::make_unique<NdtLocalizationTriggerModule>(this);
   }
   if (declare_parameter<bool>("stop_check_enabled")) {
+    RCLCPP_INFO(get_logger(), "Stop check module enabled");
     // Add 1.0 sec margin for twist buffer.
     stop_check_duration_ = declare_parameter<double>("stop_check_duration");
     stop_check_ = std::make_unique<StopCheckModule>(this, stop_check_duration_ + 1.0);
   }
   if (declare_parameter<bool>("pose_error_check_enabled")) {
+    RCLCPP_INFO(get_logger(), "Pose error check module enabled");
     pose_error_check_ = std::make_unique<PoseErrorCheckModule>(this);
   }
   logger_configure_ = std::make_unique<autoware_utils_logging::LoggerLevelConfigure>(this);
 
+  RCLCPP_INFO(get_logger(), "PoseInitializer: Changing state to UNINITIALIZED");
   change_state(State::Message::UNINITIALIZED);
+  RCLCPP_INFO(get_logger(), "PoseInitializer: State changed and published");
 
   if (declare_parameter<bool>("user_defined_initial_pose.enable")) {
     const auto initial_pose_array =
@@ -107,6 +121,10 @@ void PoseInitializer::change_state(State::Message::_state_type state)
   state_.stamp = now();
   state_.state = state;
   pub_state_->publish(state_);
+
+  const char * state_names[] = {"UNKNOWN", "UNINITIALIZED", "INITIALIZING", "INITIALIZED"};
+  const char * state_name = (state <= 3) ? state_names[state] : "INVALID";
+  RCLCPP_INFO(get_logger(), "State changed to: %s (%d)", state_name, state);
 }
 
 // To execute in the constructor, you need to call ros spin.
@@ -155,9 +173,11 @@ void PoseInitializer::on_initialize(
   const Initialize::Service::Request::SharedPtr req,
   const Initialize::Service::Response::SharedPtr res)
 {
+  RCLCPP_DEBUG(get_logger(), "on_initialize service called! method=%d", req->method);
   try {
     // NOTE: This function is not executed during initialization because mutually exclusive.
     if (stop_check_ && !stop_check_->isVehicleStopped(stop_check_duration_)) {
+      RCLCPP_WARN(get_logger(), "on_initialize: Vehicle is not stopped");
       autoware_adapi_v1_msgs::msg::ResponseStatus respose_status;
       respose_status.success = false;
       respose_status.code = Initialize::Service::Response::ERROR_UNSAFE;
@@ -166,6 +186,7 @@ void PoseInitializer::on_initialize(
     }
 
     if (req->method == Initialize::Service::Request::AUTO) {
+      RCLCPP_DEBUG(get_logger(), "on_initialize: AUTO initialization requested");
       change_state(State::Message::INITIALIZING);
       change_node_trigger(false, false);
 
@@ -173,10 +194,12 @@ void PoseInitializer::on_initialize(
         req->pose_with_covariance.empty() ? get_gnss_pose() : req->pose_with_covariance.front();
       bool reliable = true;
       if (ndt_) {
+        RCLCPP_DEBUG(get_logger(), "on_initialize: Calling NDT align_pose");
         std::tie(pose, reliable) = ndt_->align_pose(pose);
       } else if (yabloc_) {
         // If both the NDT and YabLoc initializer are enabled, prioritize NDT as it offers more
         // accuracy pose.
+        RCLCPP_DEBUG(get_logger(), "on_initialize: Calling YabLoc align_pose");
         std::tie(pose, reliable) = yabloc_->align_pose(pose);
       }
 
@@ -214,6 +237,7 @@ void PoseInitializer::on_initialize(
       pub_reset_->publish(pose);
 
       change_node_trigger(true, false);
+      RCLCPP_INFO(get_logger(), "on_initialize: AUTO initialization succeeded, reliable=%d", reliable);
       res->status.success = true;
       change_state(State::Message::INITIALIZED);
 
@@ -244,6 +268,7 @@ void PoseInitializer::on_initialize(
       throw respose_status;
     }
   } catch (const autoware_adapi_v1_msgs::msg::ResponseStatus & error) {
+    RCLCPP_ERROR(get_logger(), "on_initialize: Failed with error code=%d, message=%s", error.code, error.message.c_str());
     res->status.success = error.success;
     res->status.code = error.code;
     res->status.message = error.message;
