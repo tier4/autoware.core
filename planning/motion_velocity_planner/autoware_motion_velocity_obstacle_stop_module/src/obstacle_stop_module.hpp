@@ -34,7 +34,6 @@
 #include <tf2_ros/buffer.hpp>
 
 #include <lanelet2_core/primitives/Lanelet.h>
-
 #include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -127,7 +126,7 @@ private:
   mutable std::optional<std::vector<Polygon2d>> decimated_traj_polys_{std::nullopt};
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{};
 
-  // Traffic light slowdown state
+  // Traffic light slow start state
   struct TrafficLightStopState
   {
     lanelet::Id traffic_light_id;
@@ -153,7 +152,7 @@ private:
     const std::vector<Polygon2d> & decimated_traj_polys, const VehicleInfo & vehicle_info,
     const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check, size_t ego_idx);
 
-  std::vector<Polygon2d> get_trajectory_polygon(
+  DetectionPolygon get_trajectory_polygon(
     const std::vector<TrajectoryPoint> & decimated_traj_points, const VehicleInfo & vehicle_info,
     const geometry_msgs::msg::Pose & current_ego_pose, const PolygonParam & polygon_param,
     const bool enable_to_consider_current_pose, const double time_to_convergence,
@@ -260,7 +259,7 @@ private:
     const double x_offset_to_bumper, const double estimation_time,
     const rclcpp::Time & predicted_objects_stamp) const;
 
-  // Traffic light slowdown functions
+  // Traffic light slow start functions
   std::optional<TrafficLightInfo> find_traffic_light_on_route(
     const std::vector<TrajectoryPoint> & traj_points,
     const std::shared_ptr<const PlannerData> planner_data) const;
@@ -275,6 +274,21 @@ private:
     const std::vector<TrajectoryPoint> & traj_points,
     const std::shared_ptr<const PlannerData> planner_data, double stop_line_arc_length,
     double tolerance) const;
+
+  // Traffic light slow start planning functions
+  std::optional<VelocityPlanningResult> plan_traffic_light_slow_start(
+    const std::vector<TrajectoryPoint> & traj_points,
+    const std::vector<StopObstacle> & stop_obstacles,
+    const std::shared_ptr<const PlannerData> planner_data);
+  void update_traffic_light_stop_state(
+    const TrafficLightInfo & tl_info, const StopObstacle & obstacle,
+    const std::vector<TrajectoryPoint> & traj_points);
+  std::optional<SlowdownInterval> create_slow_start_interval(
+    const TrafficLightInfo & tl_info, const StopObstacle & obstacle,
+    const std::vector<TrajectoryPoint> & traj_points);
+  void clear_traffic_light_stop_state_if_needed(
+    const std::vector<TrajectoryPoint> & traj_points,
+    const std::shared_ptr<const PlannerData> planner_data);
 };
 }  // namespace autoware::motion_velocity_planner
 
