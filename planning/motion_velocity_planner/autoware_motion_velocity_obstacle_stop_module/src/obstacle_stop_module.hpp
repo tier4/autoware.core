@@ -138,6 +138,10 @@ private:
   };
   std::optional<TrafficLightStopState> traffic_light_stop_state_{std::nullopt};
 
+  // Active slow start interval (held across iterations until cleared)
+  std::optional<SlowdownInterval> active_slow_start_interval_{std::nullopt};
+  std::optional<double> active_slow_start_stop_line_arc_length_{std::nullopt};
+
   // Traffic light info structure
   struct TrafficLightInfo
   {

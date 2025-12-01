@@ -1675,6 +1675,34 @@ std::optional<VelocityPlanningResult> ObstacleStopModule::plan_traffic_light_slo
   const std::vector<StopObstacle> & stop_obstacles,
   const std::shared_ptr<const PlannerData> planner_data)
 {
+  // Check if we should hold previous slow start interval (similar to
+  // hold_previous_stop_if_necessary)
+  if (active_slow_start_interval_ && active_slow_start_stop_line_arc_length_) {
+    const auto ego_idx =
+      planner_data->find_index(traj_points, planner_data->current_odometry.pose.pose);
+    const double ego_arc_length =
+      autoware::motion_utils::calcSignedArcLength(traj_points, 0, ego_idx);
+    const double dist_past_stop_line =
+      ego_arc_length - active_slow_start_stop_line_arc_length_.value();
+
+    // Continue holding slow start interval if:
+    // 1. Ego velocity is below threshold (similar to hold_stop_velocity_threshold)
+    // 2. We haven't passed the stop line by too much
+    if (
+      std::abs(planner_data->current_odometry.twist.twist.linear.x) <
+        stop_planning_param_.hold_stop_velocity_threshold &&
+      dist_past_stop_line <
+        stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold) {
+      VelocityPlanningResult result;
+      result.slowdown_intervals.push_back(*active_slow_start_interval_);
+      return result;
+    } else {
+      // Clear active slow start interval if conditions no longer met
+      active_slow_start_interval_ = std::nullopt;
+      active_slow_start_stop_line_arc_length_ = std::nullopt;
+    }
+  }
+
   // 1. Find traffic light on route
   const auto tl_info = find_traffic_light_on_route(traj_points, planner_data);
   if (!tl_info) {
@@ -1723,12 +1751,15 @@ std::optional<VelocityPlanningResult> ObstacleStopModule::plan_traffic_light_slo
     const auto slow_start_interval =
       create_slow_start_interval(*tl_info, closest_obstacle, traj_points);
     if (slow_start_interval) {
-      VelocityPlanningResult result;
-      result.slowdown_intervals.push_back(*slow_start_interval);
+      // Store the slow start interval to hold across iterations
+      active_slow_start_interval_ = slow_start_interval;
+      active_slow_start_stop_line_arc_length_ = tl_info->distance_to_stop_line;
 
-      // Clear state after creating slow start interval
+      // Clear red light stop state (transition complete)
       traffic_light_stop_state_ = std::nullopt;
 
+      VelocityPlanningResult result;
+      result.slowdown_intervals.push_back(*slow_start_interval);
       return result;
     }
   }
@@ -1769,25 +1800,38 @@ void ObstacleStopModule::clear_traffic_light_stop_state_if_needed(
   const std::vector<TrajectoryPoint> & traj_points,
   const std::shared_ptr<const PlannerData> planner_data)
 {
-  if (!traffic_light_stop_state_) {
-    return;
-  }
-
   const auto ego_idx =
     planner_data->find_index(traj_points, planner_data->current_odometry.pose.pose);
   const double ego_arc_length =
     autoware::motion_utils::calcSignedArcLength(traj_points, 0, ego_idx);
-  const double dist_past_stop_line =
-    ego_arc_length - traffic_light_stop_state_->stop_line_arc_length;
 
-  const double time_since_red =
-    (clock_->now() - traffic_light_stop_state_->red_light_stop_time).seconds();
+  // Clear red light stop state if needed
+  if (traffic_light_stop_state_) {
+    const double dist_past_stop_line =
+      ego_arc_length - traffic_light_stop_state_->stop_line_arc_length;
 
-  if (
-    dist_past_stop_line >
-      stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold ||
-    time_since_red > stop_planning_param_.traffic_light_slow_start_param.state_clear_timeout) {
-    traffic_light_stop_state_ = std::nullopt;
+    const double time_since_red =
+      (clock_->now() - traffic_light_stop_state_->red_light_stop_time).seconds();
+
+    if (
+      dist_past_stop_line >
+        stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold ||
+      time_since_red > stop_planning_param_.traffic_light_slow_start_param.state_clear_timeout) {
+      traffic_light_stop_state_ = std::nullopt;
+    }
+  }
+
+  // Clear active slow start interval if vehicle has passed stop line significantly
+  if (active_slow_start_interval_ && active_slow_start_stop_line_arc_length_) {
+    const double dist_past_stop_line =
+      ego_arc_length - active_slow_start_stop_line_arc_length_.value();
+
+    if (
+      dist_past_stop_line >
+      stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold) {
+      active_slow_start_interval_ = std::nullopt;
+      active_slow_start_stop_line_arc_length_ = std::nullopt;
+    }
   }
 }
 
