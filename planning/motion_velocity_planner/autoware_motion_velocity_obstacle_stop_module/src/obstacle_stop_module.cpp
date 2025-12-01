@@ -19,10 +19,14 @@
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_rclcpp/parameter.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
+
+#include <lanelet2_core/primitives/Lanelet.h>
+#include <lanelet2_core/geometry/BoundingBox.h>
 
 #include <autoware_perception_msgs/msg/detail/shape__struct.hpp>
 
@@ -303,14 +307,95 @@ VelocityPlanningResult ObstacleStopModule::plan(
     autoware::motion_velocity_planner::utils::concat_vectors(
       std::move(stop_obstacles_for_predicted_object), std::move(stop_obstacles_for_point_cloud));
 
-  // 6. plan stop
+  // 6. Check for traffic light slowdown scenario (route-aware)
+  if (stop_planning_param_.traffic_light_slowdown_param.enable_traffic_light_slowdown &&
+      !stop_obstacles.empty()) {
+    const auto tl_info = find_traffic_light_on_route(raw_trajectory_points, planner_data);
+    if (tl_info) {
+      // Check if distance to stop line is close enough to trigger state machine
+      if (
+        tl_info->distance_to_stop_line <=
+        stop_planning_param_.traffic_light_slowdown_param.stop_line_proximity_threshold) {
+        const auto closest_stop_obstacles = get_closest_stop_obstacles(stop_obstacles);
+        if (!closest_stop_obstacles.empty()) {
+          const auto & closest_obstacle = closest_stop_obstacles[0];
+
+          if (is_obstacle_at_stop_line(
+                closest_obstacle, tl_info->stop_line, raw_trajectory_points, planner_data,
+                tl_info->distance_to_stop_line,
+                stop_planning_param_.traffic_light_slowdown_param.obstacle_stop_line_tolerance)) {
+            const bool is_green =
+              is_traffic_light_green(tl_info->traffic_light_id, tl_info->lanelet, planner_data);
+            const bool is_red =
+              is_traffic_light_red(tl_info->traffic_light_id, tl_info->lanelet, planner_data);
+
+            // Update state: track red light stop
+            if (is_red && !traffic_light_stop_state_) {
+              const auto stop_line_pose = autoware::motion_utils::calcInterpolatedPose(
+                raw_trajectory_points, tl_info->distance_to_stop_line);
+
+              traffic_light_stop_state_ = TrafficLightStopState{
+                tl_info->traffic_light_id,
+                clock_->now(),
+                true,
+                stop_line_pose.position,
+                tl_info->distance_to_stop_line,
+                closest_obstacle.uuid};
+            }
+
+            // Create slowdown interval if green and was stopped at red
+            if (
+              is_green && traffic_light_stop_state_ &&
+              traffic_light_stop_state_->traffic_light_id == tl_info->traffic_light_id &&
+              traffic_light_stop_state_->was_stopped_at_red) {
+              VelocityPlanningResult result;
+              const auto from_point = closest_obstacle.collision_point;
+              const auto to_pose = autoware::motion_utils::calcInterpolatedPose(
+                raw_trajectory_points, tl_info->distance_to_stop_line);
+
+              result.slowdown_intervals.emplace_back(
+                from_point, to_pose.position,
+                stop_planning_param_.traffic_light_slowdown_param.slowdown_velocity);
+
+              // Clear state after creating slowdown
+              traffic_light_stop_state_ = std::nullopt;
+
+              // Publish debug info
+              publish_debug_info();
+
+              return result;
+            }
+          }
+        }
+      }
+    }
+
+    // Clear state if we've passed the stop line or timeout
+    if (traffic_light_stop_state_) {
+      const auto ego_idx =
+        planner_data->find_index(raw_trajectory_points, planner_data->current_odometry.pose.pose);
+      const double ego_arc_length =
+        autoware::motion_utils::calcSignedArcLength(raw_trajectory_points, 0, ego_idx);
+      const double dist_past_stop_line = ego_arc_length - traffic_light_stop_state_->stop_line_arc_length;
+
+      const double time_since_red = (clock_->now() - traffic_light_stop_state_->red_light_stop_time).seconds();
+
+      if (
+        dist_past_stop_line > stop_planning_param_.traffic_light_slowdown_param.state_clear_distance_threshold ||
+        time_since_red > stop_planning_param_.traffic_light_slowdown_param.state_clear_timeout) {
+        traffic_light_stop_state_ = std::nullopt;
+      }
+    }
+  }
+
+  // 7. plan stop
   const auto stop_point =
     plan_stop(planner_data, raw_trajectory_points, stop_obstacles, x_offset_to_bumper);
 
-  // 7. publish messages for debugging
+  // 8. publish messages for debugging
   publish_debug_info();
 
-  // 8. generate VelocityPlanningResult
+  // 9. generate VelocityPlanningResult
   VelocityPlanningResult result;
   if (stop_point) {
     result.stop_points.push_back(*stop_point);
@@ -1511,6 +1596,136 @@ ObstacleStopModule::check_outside_cut_in_obstacle(
   }
 
   return collision_point;
+}
+
+std::optional<ObstacleStopModule::TrafficLightInfo> ObstacleStopModule::find_traffic_light_on_route(
+  const std::vector<TrajectoryPoint> & traj_points,
+  const std::shared_ptr<const PlannerData> planner_data) const
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  if (!planner_data->route_handler) {
+    return std::nullopt;
+  }
+
+  const auto & ego_pose = planner_data->current_odometry.pose.pose;
+
+  // 1. Find closest lanelet from current position within route
+  lanelet::ConstLanelet current_lanelet;
+  if (!planner_data->route_handler->getClosestLaneletWithinRoute(ego_pose, &current_lanelet)) {
+    // Not on route or too far from route
+    return std::nullopt;
+  }
+
+  // 2. Get lanelet sequence (current + next lanelet)
+  const double forward_distance = 50.0;  // meters to look ahead
+  const auto lanelet_sequence = planner_data->route_handler->getLaneletSequence(
+    current_lanelet, ego_pose, 0.0, forward_distance);
+
+  // 3. Check current lanelet and following lanelet for traffic lights
+  std::optional<TrafficLightInfo> closest_tl_info;
+  double min_distance = std::numeric_limits<double>::max();
+
+  const auto ego_idx = planner_data->find_index(traj_points, ego_pose);
+
+  for (size_t i = 0; i < std::min(2UL, lanelet_sequence.size()); ++i) {
+    const auto & lanelet = lanelet_sequence[i];
+
+    for (const auto & element : lanelet.regulatoryElementsAs<lanelet::TrafficLight>()) {
+      if (!element->stopLine().has_value()) {
+        continue;
+      }
+
+      const auto & stop_line = element->stopLine()->basicLineString();
+
+      // 4. Calculate distance from stop line to current ego position along trajectory
+      // Find closest point on stop line to trajectory
+      double min_dist_to_stop_line = std::numeric_limits<double>::max();
+
+      for (const auto & stop_point : stop_line) {
+        const geometry_msgs::msg::Point stop_pt{
+          .x = stop_point.x(), .y = stop_point.y(), .z = 0.0};
+
+        // Calculate arc length from ego to this stop line point
+        const double arc_length =
+          autoware::motion_utils::calcSignedArcLength(traj_points, ego_idx, stop_pt);
+
+        if (arc_length > 0.0 && arc_length < min_dist_to_stop_line) {
+          min_dist_to_stop_line = arc_length;
+        }
+      }
+
+      // 5. Check if distance is within proximity threshold
+      if (
+        min_dist_to_stop_line < min_distance &&
+        min_dist_to_stop_line <= stop_planning_param_.traffic_light_slowdown_param.stop_line_proximity_threshold) {
+        min_distance = min_dist_to_stop_line;
+        closest_tl_info = TrafficLightInfo{
+          element->id(), lanelet, stop_line, min_dist_to_stop_line};
+      }
+    }
+  }
+
+  return closest_tl_info;
+}
+
+bool ObstacleStopModule::is_traffic_light_green(
+  lanelet::Id traffic_light_id, const lanelet::ConstLanelet & lanelet,
+  const std::shared_ptr<const PlannerData> planner_data) const
+{
+  const auto signal = planner_data->get_traffic_signal(traffic_light_id, true);
+  if (!signal) {
+    return false;
+  }
+
+  // Use utility function to check if we should stop
+  // This considers turn direction and arrow shapes
+  // Returns true if we should NOT stop (i.e., green)
+  return !autoware::traffic_light_utils::isTrafficSignalStop(lanelet, signal->signal);
+}
+
+bool ObstacleStopModule::is_traffic_light_red(
+  lanelet::Id traffic_light_id, const lanelet::ConstLanelet & lanelet,
+  const std::shared_ptr<const PlannerData> planner_data) const
+{
+  const auto signal = planner_data->get_traffic_signal(traffic_light_id, true);
+  if (!signal) {
+    return false;
+  }
+
+  // Use utility function to check if we should stop
+  // This considers turn direction and arrow shapes
+  return autoware::traffic_light_utils::isTrafficSignalStop(lanelet, signal->signal);
+}
+
+bool ObstacleStopModule::is_obstacle_at_stop_line(
+  const StopObstacle & obstacle, const lanelet::BasicLineString2d & stop_line,
+  const std::vector<TrajectoryPoint> & traj_points,
+  const std::shared_ptr<const PlannerData> planner_data, double stop_line_arc_length,
+  double tolerance) const
+{
+  // Check if obstacle is a vehicle
+  if (
+    obstacle.classification.label != StopObstacleClassification::Type::CAR &&
+    obstacle.classification.label != StopObstacleClassification::Type::TRUCK &&
+    obstacle.classification.label != StopObstacleClassification::Type::BUS) {
+    return false;
+  }
+
+  // Check if obstacle is essentially stationary
+  if (
+    std::abs(obstacle.velocity) >
+    stop_planning_param_.traffic_light_slowdown_param.obstacle_velocity_threshold) {
+    return false;
+  }
+
+  // Check if obstacle is near stop line (along trajectory)
+  const auto ego_idx = planner_data->find_index(traj_points, planner_data->current_odometry.pose.pose);
+  const double obstacle_arc_length =
+    autoware::motion_utils::calcSignedArcLength(traj_points, ego_idx, obstacle.collision_point);
+  const double dist_to_stop_line = std::abs(obstacle_arc_length - stop_line_arc_length);
+
+  return dist_to_stop_line < tolerance;
 }
 
 }  // namespace autoware::motion_velocity_planner

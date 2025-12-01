@@ -240,6 +240,35 @@ struct RSSParam
   double velocity_offset{};
 };
 
+struct TrafficLightSlowdownParam
+{
+  bool enable_traffic_light_slowdown{true};
+  double stop_line_proximity_threshold{6.0};  // meters
+  double obstacle_stop_line_tolerance{2.0};   // meters
+  double slowdown_velocity{0.01};             // m/s
+  double obstacle_velocity_threshold{0.5};    // m/s
+  double state_clear_distance_threshold{10.0};  // meters past stop line
+  double state_clear_timeout{30.0};            // seconds
+
+  TrafficLightSlowdownParam() = default;
+  explicit TrafficLightSlowdownParam(rclcpp::Node & node)
+  {
+    const std::string ns = "obstacle_stop.traffic_light_slowdown.";
+    enable_traffic_light_slowdown =
+      get_or_declare_parameter<bool>(node, ns + "enable");
+    stop_line_proximity_threshold =
+      get_or_declare_parameter<double>(node, ns + "stop_line_proximity_threshold");
+    obstacle_stop_line_tolerance =
+      get_or_declare_parameter<double>(node, ns + "obstacle_stop_line_tolerance");
+    slowdown_velocity = get_or_declare_parameter<double>(node, ns + "slowdown_velocity");
+    obstacle_velocity_threshold =
+      get_or_declare_parameter<double>(node, ns + "obstacle_velocity_threshold");
+    state_clear_distance_threshold =
+      get_or_declare_parameter<double>(node, ns + "state_clear_distance_threshold");
+    state_clear_timeout = get_or_declare_parameter<double>(node, ns + "state_clear_timeout");
+  }
+};
+
 struct StopPlanningParam
 {
   double stop_margin{};
@@ -258,6 +287,7 @@ struct StopPlanningParam
   RSSParam rss_params;
   double obstacle_velocity_threshold_enter_fixed_stop{};
   double obstacle_velocity_threshold_exit_fixed_stop{};
+  TrafficLightSlowdownParam traffic_light_slowdown_param{};
 
   struct ObjectTypeSpecificParams
   {
@@ -312,6 +342,7 @@ struct StopPlanningParam
       node, "obstacle_stop.stop_planning.obstacle_velocity_threshold_enter_fixed_stop");
     obstacle_velocity_threshold_exit_fixed_stop = get_or_declare_parameter<double>(
       node, "obstacle_stop.stop_planning.obstacle_velocity_threshold_exit_fixed_stop");
+    traffic_light_slowdown_param = TrafficLightSlowdownParam(node);
 
     const std::string param_prefix = "obstacle_stop.stop_planning.object_type_specified_params.";
     const auto object_types =

@@ -26,11 +26,14 @@
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
 #include <autoware/object_recognition_utils/predicted_path_utils.hpp>
 #include <autoware/objects_of_interest_marker_interface/objects_of_interest_marker_interface.hpp>
+#include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2_ros/buffer.hpp>
+
+#include <lanelet2_core/primitives/Lanelet.h>
 
 #include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
@@ -75,6 +78,7 @@ public:
     RequiredSubscriptionInfo required_subscription_info;
     required_subscription_info.predicted_objects = true;
     required_subscription_info.no_ground_pointcloud = true;
+    required_subscription_info.traffic_signals = true;
     return required_subscription_info;
   }
 
@@ -123,7 +127,33 @@ private:
   mutable std::optional<std::vector<Polygon2d>> decimated_traj_polys_{std::nullopt};
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{};
 
-  DetectionPolygon get_trajectory_polygon(
+  // Traffic light slowdown state
+  struct TrafficLightStopState
+  {
+    lanelet::Id traffic_light_id;
+    rclcpp::Time red_light_stop_time;
+    bool was_stopped_at_red;
+    geometry_msgs::msg::Point stop_line_position;
+    double stop_line_arc_length;
+    std::string obstacle_uuid;  // UUID of obstacle at stop line
+  };
+  std::optional<TrafficLightStopState> traffic_light_stop_state_{std::nullopt};
+
+  // Traffic light info structure
+  struct TrafficLightInfo
+  {
+    lanelet::Id traffic_light_id;
+    lanelet::ConstLanelet lanelet;
+    lanelet::BasicLineString2d stop_line;
+    double distance_to_stop_line;  // Distance from ego to stop line along trajectory
+  };
+
+  std::vector<geometry_msgs::msg::Point> convert_point_cloud_to_stop_points(
+    const PlannerData::Pointcloud & pointcloud, const std::vector<TrajectoryPoint> & traj_points,
+    const std::vector<Polygon2d> & decimated_traj_polys, const VehicleInfo & vehicle_info,
+    const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check, size_t ego_idx);
+
+  std::vector<Polygon2d> get_trajectory_polygon(
     const std::vector<TrajectoryPoint> & decimated_traj_points, const VehicleInfo & vehicle_info,
     const geometry_msgs::msg::Pose & current_ego_pose, const PolygonParam & polygon_param,
     const bool enable_to_consider_current_pose, const double time_to_convergence,
@@ -229,6 +259,22 @@ private:
     const std::vector<Polygon2d> & decimated_traj_polys_with_lat_margin,
     const double x_offset_to_bumper, const double estimation_time,
     const rclcpp::Time & predicted_objects_stamp) const;
+
+  // Traffic light slowdown functions
+  std::optional<TrafficLightInfo> find_traffic_light_on_route(
+    const std::vector<TrajectoryPoint> & traj_points,
+    const std::shared_ptr<const PlannerData> planner_data) const;
+  bool is_traffic_light_green(
+    lanelet::Id traffic_light_id, const lanelet::ConstLanelet & lanelet,
+    const std::shared_ptr<const PlannerData> planner_data) const;
+  bool is_traffic_light_red(
+    lanelet::Id traffic_light_id, const lanelet::ConstLanelet & lanelet,
+    const std::shared_ptr<const PlannerData> planner_data) const;
+  bool is_obstacle_at_stop_line(
+    const StopObstacle & obstacle, const lanelet::BasicLineString2d & stop_line,
+    const std::vector<TrajectoryPoint> & traj_points,
+    const std::shared_ptr<const PlannerData> planner_data, double stop_line_arc_length,
+    double tolerance) const;
 };
 }  // namespace autoware::motion_velocity_planner
 
