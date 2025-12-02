@@ -1539,6 +1539,7 @@ std::optional<ObstacleStopModule::TrafficLightInfo> ObstacleStopModule::find_tra
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
   if (!planner_data->route_handler) {
+    RCLCPP_DEBUG(logger_, "[TrafficLight] Route handler not available");
     return std::nullopt;
   }
 
@@ -1548,25 +1549,46 @@ std::optional<ObstacleStopModule::TrafficLightInfo> ObstacleStopModule::find_tra
   lanelet::ConstLanelet current_lanelet;
   if (!planner_data->route_handler->getClosestLaneletWithinRoute(ego_pose, &current_lanelet)) {
     // Not on route or too far from route
+    RCLCPP_DEBUG(logger_, "[TrafficLight] Cannot find closest lanelet within route");
     return std::nullopt;
   }
+
+  RCLCPP_INFO(
+    logger_, "[TrafficLight] Searching for traffic lights on route. Current lanelet ID: %ld",
+    current_lanelet.id());
 
   // 2. Get lanelet sequence (current + next lanelet)
   const double forward_distance = 50.0;  // meters to look ahead
   const auto lanelet_sequence = planner_data->route_handler->getLaneletSequence(
     current_lanelet, ego_pose, 0.0, forward_distance);
 
+  RCLCPP_INFO(
+    logger_, "[TrafficLight] Checking %zu lanelets in sequence (forward distance: %.1f m)",
+    lanelet_sequence.size(), forward_distance);
+
   // 3. Check current lanelet and following lanelet for traffic lights
   std::optional<TrafficLightInfo> closest_tl_info;
   double min_distance = std::numeric_limits<double>::max();
 
   const auto ego_idx = planner_data->find_index(traj_points, ego_pose);
+  size_t traffic_light_count = 0;
 
   for (size_t i = 0; i < std::min(2UL, lanelet_sequence.size()); ++i) {
     const auto & lanelet = lanelet_sequence[i];
 
-    for (const auto & element : lanelet.regulatoryElementsAs<lanelet::TrafficLight>()) {
+    const auto traffic_lights = lanelet.regulatoryElementsAs<lanelet::TrafficLight>();
+    RCLCPP_INFO(
+      logger_,
+      "[TrafficLight] Lanelet %ld (index %zu): Found %zu traffic light regulatory elements",
+      lanelet.id(), i, traffic_lights.size());
+
+    for (const auto & element : traffic_lights) {
+      traffic_light_count++;
       if (!element->stopLine().has_value()) {
+        RCLCPP_DEBUG(
+          logger_,
+          "[TrafficLight] Traffic light ID %ld has no stop line, skipping",
+          element->id());
         continue;
       }
 
@@ -1595,6 +1617,12 @@ std::optional<ObstacleStopModule::TrafficLightInfo> ObstacleStopModule::find_tra
         }
       }
 
+      RCLCPP_INFO(
+        logger_,
+        "[TrafficLight] Traffic light ID %ld: Distance to stop line = %.2f m (threshold: %.2f m)",
+        element->id(), min_dist_to_stop_line,
+        stop_planning_param_.traffic_light_slow_start_param.stop_line_proximity_threshold);
+
       // 5. Check if distance is within proximity threshold
       if (
         min_dist_to_stop_line < min_distance &&
@@ -1603,8 +1631,25 @@ std::optional<ObstacleStopModule::TrafficLightInfo> ObstacleStopModule::find_tra
         min_distance = min_dist_to_stop_line;
         closest_tl_info =
           TrafficLightInfo{element->id(), lanelet, stop_line_2d, min_dist_to_stop_line};
+        RCLCPP_INFO(
+          logger_,
+          "[TrafficLight] Selected closest traffic light: ID %ld at distance %.2f m",
+          element->id(), min_dist_to_stop_line);
       }
     }
+  }
+
+  if (closest_tl_info) {
+    RCLCPP_INFO(
+      logger_,
+      "[TrafficLight] Found traffic light on route: ID %ld, Lanelet %ld, Distance: %.2f m",
+      closest_tl_info->traffic_light_id, closest_tl_info->lanelet.id(),
+      closest_tl_info->distance_to_stop_line);
+  } else {
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLight] No traffic light found within proximity threshold. Checked %zu traffic lights",
+      traffic_light_count);
   }
 
   return closest_tl_info;
@@ -1616,13 +1661,43 @@ bool ObstacleStopModule::is_traffic_light_green(
 {
   const auto signal = planner_data->get_traffic_signal(traffic_light_id, true);
   if (!signal) {
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLight] Traffic light ID %ld: No signal data available (using keep_last_observation)",
+      traffic_light_id);
     return false;
   }
 
   // Use utility function to check if we should stop
   // This considers turn direction and arrow shapes
   // Returns true if we should NOT stop (i.e., green)
-  return !autoware::traffic_light_utils::isTrafficSignalStop(lanelet, signal->signal);
+  const bool is_green = !autoware::traffic_light_utils::isTrafficSignalStop(lanelet, signal->signal);
+
+  // Log traffic light state information
+  std::string color_str = "UNKNOWN";
+  std::string shape_str = "";
+  for (const auto & element : signal->signal.elements) {
+    if (element.color == autoware_perception_msgs::msg::TrafficLightElement::RED) {
+      color_str = "RED";
+    } else if (element.color == autoware_perception_msgs::msg::TrafficLightElement::GREEN) {
+      color_str = "GREEN";
+    } else if (element.color == autoware_perception_msgs::msg::TrafficLightElement::AMBER) {
+      color_str = "AMBER";
+    }
+    if (element.shape != autoware_perception_msgs::msg::TrafficLightElement::CIRCLE) {
+      shape_str += std::to_string(element.shape) + " ";
+    }
+  }
+
+  RCLCPP_INFO(
+    logger_,
+    "[TrafficLight] Traffic light ID %ld: Color=%s, Shape=%s, ShouldStop=%s, IsGreen=%s",
+    traffic_light_id, color_str.c_str(),
+    shape_str.empty() ? "CIRCLE" : shape_str.c_str(),
+    autoware::traffic_light_utils::isTrafficSignalStop(lanelet, signal->signal) ? "true" : "false",
+    is_green ? "true" : "false");
+
+  return is_green;
 }
 
 bool ObstacleStopModule::is_traffic_light_red(
@@ -1631,12 +1706,22 @@ bool ObstacleStopModule::is_traffic_light_red(
 {
   const auto signal = planner_data->get_traffic_signal(traffic_light_id, true);
   if (!signal) {
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLight] Traffic light ID %ld: No signal data available for red check",
+      traffic_light_id);
     return false;
   }
 
   // Use utility function to check if we should stop
   // This considers turn direction and arrow shapes
-  return autoware::traffic_light_utils::isTrafficSignalStop(lanelet, signal->signal);
+  const bool is_red = autoware::traffic_light_utils::isTrafficSignalStop(lanelet, signal->signal);
+
+  RCLCPP_DEBUG(
+    logger_, "[TrafficLight] Traffic light ID %ld: IsRed=%s", traffic_light_id,
+    is_red ? "true" : "false");
+
+  return is_red;
 }
 
 bool ObstacleStopModule::is_obstacle_at_stop_line(
@@ -1684,28 +1769,41 @@ std::optional<VelocityPlanningResult> ObstacleStopModule::plan_traffic_light_slo
       autoware::motion_utils::calcSignedArcLength(traj_points, 0, ego_idx);
     const double dist_past_stop_line =
       ego_arc_length - active_slow_start_stop_line_arc_length_.value();
+    const double ego_velocity = std::abs(planner_data->current_odometry.twist.twist.linear.x);
 
     // Continue holding slow start interval if:
     // 1. Ego velocity is below threshold (similar to hold_stop_velocity_threshold)
     // 2. We haven't passed the stop line by too much
     if (
-      std::abs(planner_data->current_odometry.twist.twist.linear.x) <
-        stop_planning_param_.hold_stop_velocity_threshold &&
+      ego_velocity < stop_planning_param_.hold_stop_velocity_threshold &&
       dist_past_stop_line <
         stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold) {
+      RCLCPP_DEBUG(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Holding active slow start interval - "
+        "Velocity: %.3f m/s, Distance past stop line: %.2f m",
+        ego_velocity, dist_past_stop_line);
       VelocityPlanningResult result;
       result.slowdown_intervals.push_back(*active_slow_start_interval_);
       return result;
     } else {
       // Clear active slow start interval if conditions no longer met
+      RCLCPP_INFO(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Clearing active slow start interval - "
+        "Velocity: %.3f m/s (threshold: %.3f), Distance past stop line: %.2f m (threshold: %.2f)",
+        ego_velocity, stop_planning_param_.hold_stop_velocity_threshold, dist_past_stop_line,
+        stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold);
       active_slow_start_interval_ = std::nullopt;
       active_slow_start_stop_line_arc_length_ = std::nullopt;
     }
   }
 
   // 1. Find traffic light on route
+  RCLCPP_INFO(logger_, "[TrafficLightSlowStart] Starting traffic light slow start planning");
   const auto tl_info = find_traffic_light_on_route(traj_points, planner_data);
   if (!tl_info) {
+    RCLCPP_DEBUG(logger_, "[TrafficLightSlowStart] No traffic light found on route");
     return std::nullopt;
   }
 
@@ -1713,24 +1811,52 @@ std::optional<VelocityPlanningResult> ObstacleStopModule::plan_traffic_light_slo
   if (
     tl_info->distance_to_stop_line >
     stop_planning_param_.traffic_light_slow_start_param.stop_line_proximity_threshold) {
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLightSlowStart] Traffic light ID %ld too far: %.2f m > %.2f m threshold",
+      tl_info->traffic_light_id, tl_info->distance_to_stop_line,
+      stop_planning_param_.traffic_light_slow_start_param.stop_line_proximity_threshold);
     return std::nullopt;
   }
+
+  RCLCPP_INFO(
+    logger_,
+    "[TrafficLightSlowStart] Traffic light ID %ld within proximity: %.2f m <= %.2f m",
+    tl_info->traffic_light_id, tl_info->distance_to_stop_line,
+    stop_planning_param_.traffic_light_slow_start_param.stop_line_proximity_threshold);
 
   // 3. Get closest obstacle
   const auto closest_stop_obstacles = get_closest_stop_obstacles(stop_obstacles);
   if (closest_stop_obstacles.empty()) {
+    RCLCPP_DEBUG(logger_, "[TrafficLightSlowStart] No stop obstacles found");
     return std::nullopt;
   }
 
   const auto & closest_obstacle = closest_stop_obstacles[0];
+  const auto obstacle_uuid_str = autoware_utils_uuid::to_hex_string(closest_obstacle.uuid);
+  RCLCPP_INFO(
+    logger_,
+    "[TrafficLightSlowStart] Closest obstacle: UUID=%s, Velocity=%.2f m/s, Classification=%s",
+    obstacle_uuid_str.substr(0, 8).c_str(), closest_obstacle.velocity,
+    closest_obstacle.classification.to_string().c_str());
 
   // 4. Check if obstacle is at stop line
   if (!is_obstacle_at_stop_line(
         closest_obstacle, tl_info->stop_line, traj_points, planner_data,
         tl_info->distance_to_stop_line,
         stop_planning_param_.traffic_light_slow_start_param.obstacle_stop_line_tolerance)) {
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLightSlowStart] Obstacle %s is not at stop line (tolerance: %.2f m)",
+      obstacle_uuid_str.substr(0, 8).c_str(),
+      stop_planning_param_.traffic_light_slow_start_param.obstacle_stop_line_tolerance);
     return std::nullopt;
   }
+
+  RCLCPP_INFO(
+    logger_,
+    "[TrafficLightSlowStart] Obstacle %s confirmed at stop line",
+    obstacle_uuid_str.substr(0, 8).c_str());
 
   // 5. Check traffic light states
   const bool is_green =
@@ -1738,9 +1864,24 @@ std::optional<VelocityPlanningResult> ObstacleStopModule::plan_traffic_light_slo
   const bool is_red =
     is_traffic_light_red(tl_info->traffic_light_id, tl_info->lanelet, planner_data);
 
+  RCLCPP_INFO(
+    logger_,
+    "[TrafficLightSlowStart] Traffic light ID %ld state: is_green=%s, is_red=%s",
+    tl_info->traffic_light_id, is_green ? "true" : "false", is_red ? "true" : "false");
+
   // 6. Update state: track red light stop
   if (is_red && !traffic_light_stop_state_) {
+    RCLCPP_INFO(
+      logger_,
+      "[TrafficLightSlowStart] State Machine: RED light detected, recording stop state for ID %ld",
+      tl_info->traffic_light_id);
     update_traffic_light_stop_state(*tl_info, closest_obstacle, traj_points);
+  } else if (is_red && traffic_light_stop_state_) {
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLightSlowStart] State Machine: RED light, state already recorded (ID %ld, stopped at: %.2f s ago)",
+      traffic_light_stop_state_->traffic_light_id,
+      (clock_->now() - traffic_light_stop_state_->red_light_stop_time).seconds());
   }
 
   // 7. Create slow start interval if green and was stopped at red
@@ -1748,6 +1889,12 @@ std::optional<VelocityPlanningResult> ObstacleStopModule::plan_traffic_light_slo
     is_green && traffic_light_stop_state_ &&
     traffic_light_stop_state_->traffic_light_id == tl_info->traffic_light_id &&
     traffic_light_stop_state_->was_stopped_at_red) {
+    RCLCPP_INFO(
+      logger_,
+      "[TrafficLightSlowStart] State Machine: RED->GREEN transition detected! ID %ld, was stopped at red for %.2f s",
+      tl_info->traffic_light_id,
+      (clock_->now() - traffic_light_stop_state_->red_light_stop_time).seconds());
+
     const auto slow_start_interval =
       create_slow_start_interval(*tl_info, closest_obstacle, traj_points);
     if (slow_start_interval) {
@@ -1755,13 +1902,36 @@ std::optional<VelocityPlanningResult> ObstacleStopModule::plan_traffic_light_slo
       active_slow_start_interval_ = slow_start_interval;
       active_slow_start_stop_line_arc_length_ = tl_info->distance_to_stop_line;
 
+      RCLCPP_INFO(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Creating slow start interval - Velocity: %.3f m/s, "
+        "From obstacle to stop line (%.2f m)",
+        slow_start_interval->velocity, tl_info->distance_to_stop_line);
+
       // Clear red light stop state (transition complete)
       traffic_light_stop_state_ = std::nullopt;
+      RCLCPP_INFO(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Red light stop state cleared (transition complete)");
 
       VelocityPlanningResult result;
       result.slowdown_intervals.push_back(*slow_start_interval);
       return result;
+    } else {
+      RCLCPP_WARN(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Failed to create slow start interval despite transition");
     }
+  } else if (is_green && !traffic_light_stop_state_) {
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLightSlowStart] State Machine: GREEN light but no recorded red stop state (normal approach)");
+  } else if (is_green && traffic_light_stop_state_ &&
+             traffic_light_stop_state_->traffic_light_id != tl_info->traffic_light_id) {
+    RCLCPP_DEBUG(
+      logger_,
+      "[TrafficLightSlowStart] State Machine: GREEN light but recorded state is for different traffic light (ID %ld vs %ld)",
+      traffic_light_stop_state_->traffic_light_id, tl_info->traffic_light_id);
   }
 
   return std::nullopt;
@@ -1781,6 +1951,14 @@ void ObstacleStopModule::update_traffic_light_stop_state(
     stop_line_pose.position,
     tl_info.distance_to_stop_line,
     autoware_utils_uuid::to_hex_string(obstacle.uuid)};
+
+  RCLCPP_INFO(
+    logger_,
+    "[TrafficLightSlowStart] State Machine: Recorded RED light stop state - "
+    "TrafficLight ID: %ld, Stop line distance: %.2f m, Obstacle UUID: %s, Time: %.3f",
+    traffic_light_stop_state_->traffic_light_id, traffic_light_stop_state_->stop_line_arc_length,
+    traffic_light_stop_state_->obstacle_uuid.substr(0, 8).c_str(),
+    traffic_light_stop_state_->red_light_stop_time.seconds());
 }
 
 std::optional<SlowdownInterval> ObstacleStopModule::create_slow_start_interval(
@@ -1790,6 +1968,16 @@ std::optional<SlowdownInterval> ObstacleStopModule::create_slow_start_interval(
   const auto from_point = obstacle.collision_point;
   const auto to_pose =
     autoware::motion_utils::calcInterpolatedPose(traj_points, tl_info.distance_to_stop_line);
+
+  const double interval_length =
+    autoware_utils::calc_distance2d(from_point, to_pose.position);
+
+  RCLCPP_INFO(
+    logger_,
+    "[TrafficLightSlowStart] Creating slow start interval - "
+    "From: (%.2f, %.2f), To: (%.2f, %.2f), Length: %.2f m, Velocity: %.3f m/s",
+    from_point.x, from_point.y, to_pose.position.x, to_pose.position.y, interval_length,
+    stop_planning_param_.traffic_light_slow_start_param.slow_start_velocity);
 
   return SlowdownInterval(
     from_point, to_pose.position,
@@ -1813,11 +2001,29 @@ void ObstacleStopModule::clear_traffic_light_stop_state_if_needed(
     const double time_since_red =
       (clock_->now() - traffic_light_stop_state_->red_light_stop_time).seconds();
 
-    if (
+    const bool clear_by_distance =
       dist_past_stop_line >
-        stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold ||
-      time_since_red > stop_planning_param_.traffic_light_slow_start_param.state_clear_timeout) {
+      stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold;
+    const bool clear_by_timeout =
+      time_since_red > stop_planning_param_.traffic_light_slow_start_param.state_clear_timeout;
+
+    if (clear_by_distance || clear_by_timeout) {
+      RCLCPP_INFO(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Clearing red light stop state - "
+        "TrafficLight ID: %ld, Reason: %s (distance: %.2f m past stop line, time: %.2f s since red, "
+        "thresholds: %.2f m / %.2f s)",
+        traffic_light_stop_state_->traffic_light_id,
+        clear_by_distance ? "distance" : "timeout", dist_past_stop_line, time_since_red,
+        stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold,
+        stop_planning_param_.traffic_light_slow_start_param.state_clear_timeout);
       traffic_light_stop_state_ = std::nullopt;
+    } else {
+      RCLCPP_DEBUG(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Red light stop state still active - "
+        "ID: %ld, Distance past stop line: %.2f m, Time since red: %.2f s",
+        traffic_light_stop_state_->traffic_light_id, dist_past_stop_line, time_since_red);
     }
   }
 
@@ -1829,8 +2035,20 @@ void ObstacleStopModule::clear_traffic_light_stop_state_if_needed(
     if (
       dist_past_stop_line >
       stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold) {
+      RCLCPP_INFO(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Clearing active slow start interval - "
+        "Distance past stop line: %.2f m > threshold: %.2f m",
+        dist_past_stop_line,
+        stop_planning_param_.traffic_light_slow_start_param.state_clear_distance_threshold);
       active_slow_start_interval_ = std::nullopt;
       active_slow_start_stop_line_arc_length_ = std::nullopt;
+    } else {
+      RCLCPP_DEBUG(
+        logger_,
+        "[TrafficLightSlowStart] State Machine: Active slow start interval still held - "
+        "Distance past stop line: %.2f m",
+        dist_past_stop_line);
     }
   }
 }
