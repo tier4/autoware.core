@@ -16,6 +16,7 @@
 #define AUTOWARE__BEHAVIOR_VELOCITY_PLANNER_COMMON__PLUGIN_INTERFACE_HPP_
 
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
@@ -36,6 +37,8 @@ public:
     const std::shared_ptr<const PlannerData> & planner_data,
     const autoware_internal_planning_msgs::msg::PathWithLaneId & path) = 0;
   virtual const char * getModuleName() = 0;
+  virtual void setTimeKeeper(
+    const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper) = 0;
 };
 
 }  // namespace autoware::behavior_velocity_planner
