@@ -43,6 +43,10 @@ public:
     scene_manager_->updateSceneModuleInstances(planner_data, path);
   }
   const char * getModuleName() override { return scene_manager_->getModuleName(); }
+  void setTimeKeeper(const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper) override
+  {
+    scene_manager_->setTimeKeeper(time_keeper);
+  }
 
 private:
   std::unique_ptr<T> scene_manager_;

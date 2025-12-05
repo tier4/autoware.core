@@ -19,6 +19,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/velocity_smoother/smoother/analytical_jerk_constrained_smoother/analytical_jerk_constrained_smoother.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_pcl/transforms.hpp>
 #include <autoware_utils_rclcpp/parameter.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
@@ -102,6 +103,13 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
 
   logger_configure_ = std::make_unique<autoware_utils_logging::LoggerLevelConfigure>(this);
   published_time_publisher_ = std::make_unique<autoware_utils_debug::PublishedTimePublisher>(this);
+
+  // time keeper
+  pub_processing_time_detail_ = this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
+    "~/debug/processing_time_detail_ms", 1);
+  time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(pub_processing_time_detail_);
+
+  planner_manager_.setTimeKeeper(time_keeper_);
 }
 
 void BehaviorVelocityPlannerNode::onLoadPlugin(
@@ -133,6 +141,8 @@ void BehaviorVelocityPlannerNode::onParam()
 void BehaviorVelocityPlannerNode::processNoGroundPointCloud(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
+  autoware_utils_debug::ScopedTimeTrack st(
+    "BehaviorVelocityPlannerNode::processNoGroundPointCloud", *time_keeper_);
   geometry_msgs::msg::TransformStamped transform;
   try {
     transform = tf_buffer_.lookupTransform(
@@ -188,6 +198,8 @@ void BehaviorVelocityPlannerNode::processOdometry(const nav_msgs::msg::Odometry:
 void BehaviorVelocityPlannerNode::processTrafficSignals(
   const autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr msg)
 {
+  autoware_utils_debug::ScopedTimeTrack st(
+    "BehaviorVelocityPlannerNode::processTrafficSignals", *time_keeper_);
   // clear previous observation
   planner_data_.traffic_light_id_map_raw_.clear();
   const auto traffic_light_id_map_last_observed_old =
@@ -223,6 +235,8 @@ void BehaviorVelocityPlannerNode::processTrafficSignals(
 
 bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
 {
+  autoware_utils_debug::ScopedTimeTrack st(
+    "BehaviorVelocityPlannerNode::processData", *time_keeper_);
   bool is_ready = true;
   const auto & logData = [&clock, this](const std::string & data_type) {
     std::string msg = "Waiting for " + data_type + " data";
@@ -292,6 +306,8 @@ bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
 // NOTE: argument planner_data must not be referenced for multithreading
 bool BehaviorVelocityPlannerNode::isDataReady(rclcpp::Clock clock)
 {
+  autoware_utils_debug::ScopedTimeTrack st(
+    "BehaviorVelocityPlannerNode::isDataReady", *time_keeper_);
   if (!planner_data_.velocity_smoother_) {
     RCLCPP_INFO_THROTTLE(
       get_logger(), clock, logger_throttle_interval,
@@ -305,6 +321,7 @@ bool BehaviorVelocityPlannerNode::isDataReady(rclcpp::Clock clock)
 void BehaviorVelocityPlannerNode::onTrigger(
   const autoware_internal_planning_msgs::msg::PathWithLaneId::ConstSharedPtr input_path_msg)
 {
+  autoware_utils_debug::ScopedTimeTrack st("BehaviorVelocityPlannerNode::onTrigger", *time_keeper_);
   std::unique_lock<std::mutex> lk(mutex_);
 
   if (!isDataReady(*get_clock())) {
@@ -340,6 +357,8 @@ autoware_planning_msgs::msg::Path BehaviorVelocityPlannerNode::generatePath(
   const autoware_internal_planning_msgs::msg::PathWithLaneId::ConstSharedPtr input_path_msg,
   const PlannerData & planner_data)
 {
+  autoware_utils_debug::ScopedTimeTrack st(
+    "BehaviorVelocityPlannerNode::generatePath", *time_keeper_);
   autoware_planning_msgs::msg::Path output_path_msg;
 
   // TODO(someone): support backward path

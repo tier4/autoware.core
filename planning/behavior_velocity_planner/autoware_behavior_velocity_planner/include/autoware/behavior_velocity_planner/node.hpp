@@ -19,6 +19,7 @@
 
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
 #include <autoware_utils_debug/published_time_publisher.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -141,6 +142,10 @@ private:
   std::unique_ptr<autoware_utils_logging::LoggerLevelConfigure> logger_configure_;
 
   std::unique_ptr<autoware_utils_debug::PublishedTimePublisher> published_time_publisher_;
+
+  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+    pub_processing_time_detail_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 
   static constexpr int logger_throttle_interval = 3000;
 };
