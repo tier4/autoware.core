@@ -105,6 +105,12 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
 
   logger_configure_ = std::make_unique<autoware_utils_logging::LoggerLevelConfigure>(this);
   published_time_publisher_ = std::make_unique<autoware_utils_debug::PublishedTimePublisher>(this);
+
+  detailed_processing_time_publisher_ =
+    this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
+      "~/debug/processing_time_detail_ms", 1);
+  auto time_keeper = autoware_utils_debug::TimeKeeper(detailed_processing_time_publisher_);
+  time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(time_keeper);
 }
 
 void BehaviorVelocityPlannerNode::onLoadPlugin(
@@ -298,6 +304,7 @@ bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
 // NOTE: argument planner_data must not be referenced for multithreading
 bool BehaviorVelocityPlannerNode::isDataReady(rclcpp::Clock clock)
 {
+  st_ptr = std::make_unique<autoware_utils_debug::ScopedTimeTrack>(__func__, *time_keeper_);
   if (!planner_data_.velocity_smoother_) {
     RCLCPP_INFO_THROTTLE(
       get_logger(), clock, logger_throttle_interval,
@@ -311,6 +318,7 @@ bool BehaviorVelocityPlannerNode::isDataReady(rclcpp::Clock clock)
 void BehaviorVelocityPlannerNode::onTrigger(
   const autoware_internal_planning_msgs::msg::PathWithLaneId::ConstSharedPtr input_path_msg)
 {
+  const auto st = autoware_utils_debug::ScopedTimeTrack(__func__, *time_keeper_);
   stop_watch_.tic();
   std::unique_lock<std::mutex> lk(mutex_);
 
@@ -349,6 +357,7 @@ autoware_planning_msgs::msg::Path BehaviorVelocityPlannerNode::generatePath(
   const autoware_internal_planning_msgs::msg::PathWithLaneId::ConstSharedPtr input_path_msg,
   const PlannerData & planner_data)
 {
+  const auto st = autoware_utils_debug::ScopedTimeTrack(__func__, *time_keeper_);
   autoware_planning_msgs::msg::Path output_path_msg;
 
   // TODO(someone): support backward path
@@ -401,6 +410,7 @@ void BehaviorVelocityPlannerNode::publishProcessingTime()
 
 void BehaviorVelocityPlannerNode::publishDebugMarker(const autoware_planning_msgs::msg::Path & path)
 {
+  const auto st = autoware_utils_debug::ScopedTimeTrack(__func__, *time_keeper_);
   visualization_msgs::msg::MarkerArray output_msg;
   for (size_t i = 0; i < path.points.size(); ++i) {
     visualization_msgs::msg::Marker marker;

@@ -19,6 +19,7 @@
 
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
 #include <autoware_utils_debug/published_time_publisher.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
@@ -111,6 +112,9 @@ private:
   rclcpp::Publisher<autoware_planning_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<Float64Stamped>::SharedPtr processing_time_publisher_;
+  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+    detailed_processing_time_publisher_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 
   void publishDebugMarker(const autoware_planning_msgs::msg::Path & path);
   void publishProcessingTime();
