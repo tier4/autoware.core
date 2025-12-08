@@ -250,17 +250,30 @@ protected:
   virtual void deleteExpiredModules(
     const autoware_internal_planning_msgs::msg::PathWithLaneId & path)
   {
-    const auto isModuleExpired = getModuleExpiredFunction(path);
+    auto get_module_expired_function = [this, &path]() {
+      autoware_utils_debug::ScopedTimeTrack st(
+        "SceneModuleManagerInterface::getModuleExpiredFunction (" + std::string(getModuleName()) +
+          ")",
+        *time_keeper_);
+      return getModuleExpiredFunction(path);
+    };
+    const auto isModuleExpired = get_module_expired_function();
     std::vector<int64_t> expired_module_ids;
 
-    auto itr = scene_modules_.begin();
-    while (itr != scene_modules_.end()) {
-      if (isModuleExpired(*itr)) {
-        expired_module_ids.push_back((*itr)->getModuleId());
-        registered_module_id_set_.erase((*itr)->getModuleId());
-        itr = scene_modules_.erase(itr);
-      } else {
-        itr++;
+    {
+      autoware_utils_debug::ScopedTimeTrack st(
+        "SceneModuleManagerInterface::deleteExpiredModules (while loop) (" +
+          std::string(getModuleName()) + ")",
+        *time_keeper_);
+      auto itr = scene_modules_.begin();
+      while (itr != scene_modules_.end()) {
+        if (isModuleExpired(*itr)) {
+          expired_module_ids.push_back((*itr)->getModuleId());
+          registered_module_id_set_.erase((*itr)->getModuleId());
+          itr = scene_modules_.erase(itr);
+        } else {
+          itr++;
+        }
       }
     }
 
@@ -313,7 +326,6 @@ protected:
 
   std::shared_ptr<planning_factor_interface::PlanningFactorInterface> planning_factor_interface_;
 
-private:
   void appendCommonInfo(std::ostringstream & log)
   {
     if (planner_data_ && planner_data_->current_odometry) {
@@ -361,6 +373,9 @@ private:
 
   void printDeletionInfo(const std::vector<int64_t> & expired_module_ids)
   {
+    autoware_utils_debug::ScopedTimeTrack st(
+      "SceneModuleManagerInterface::printDeletionInfo (" + std::string(getModuleName()) + ")",
+      *time_keeper_);
     std::ostringstream log;
 
     log << "\n=== BEHAVIOR VELOCITY PLANNER MODULE DELETION ===\n"
