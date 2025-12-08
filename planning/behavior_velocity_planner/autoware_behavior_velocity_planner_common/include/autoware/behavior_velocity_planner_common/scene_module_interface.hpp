@@ -164,7 +164,10 @@ public:
 
     processing_time_publisher_ = std::make_shared<DebugPublisher>(&node, "~/debug");
 
-    time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>();
+    pub_processing_time_detail_ = node.create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
+      "~/debug/processing_time_detail_ms/" + std::string(module_name), 1);
+
+    time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(pub_processing_time_detail_);
   }
 
   virtual ~SceneModuleManagerInterface() = default;
@@ -175,42 +178,24 @@ public:
     const std::shared_ptr<const PlannerData> & planner_data,
     const autoware_internal_planning_msgs::msg::PathWithLaneId & path)
   {
-    autoware_utils_debug::ScopedTimeTrack st(
-      "SceneModuleManagerInterface::updateSceneModuleInstances (" + std::string(getModuleName()) +
-        ")",
-      *time_keeper_);
     planner_data_ = planner_data;
-    {
-      autoware_utils_debug::ScopedTimeTrack st(
-        "SceneModuleManagerInterface::launchNewModules (" + std::string(getModuleName()) + ")",
-        *time_keeper_);
-      launchNewModules(path);
-    }
-    {
-      autoware_utils_debug::ScopedTimeTrack st(
-        "SceneModuleManagerInterface::deleteExpiredModules (" + std::string(getModuleName()) + ")",
-        *time_keeper_);
-      deleteExpiredModules(path);
-    }
+
+    launchNewModules(path);
+    deleteExpiredModules(path);
   }
 
   virtual void plan(autoware_internal_planning_msgs::msg::PathWithLaneId * path)
   {
-    autoware_utils_debug::ScopedTimeTrack st(
-      "SceneModuleManagerInterface::plan (" + std::string(getModuleName()) + ")", *time_keeper_);
     modifyPathVelocity(path);
   }
 
   virtual RequiredSubscriptionInfo getRequiredSubscriptions() const = 0;
 
-  void setTimeKeeper(const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper)
-  {
-    time_keeper_ = time_keeper;
-  }
-
 protected:
   virtual void modifyPathVelocity(autoware_internal_planning_msgs::msg::PathWithLaneId * path)
   {
+    autoware_utils_debug::ScopedTimeTrack st(
+      "SceneModuleManagerInterface::modifyPathVelocity", *time_keeper_);
     StopWatch<std::chrono::milliseconds> stop_watch;
     stop_watch.tic("Total");
     visualization_msgs::msg::MarkerArray debug_marker_array;
@@ -308,6 +293,9 @@ protected:
     pub_debug_path_;
 
   std::shared_ptr<DebugPublisher> processing_time_publisher_;
+
+  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+    pub_processing_time_detail_;
 
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 

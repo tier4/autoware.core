@@ -17,7 +17,6 @@
 
 #include <autoware/behavior_velocity_planner_common/plugin_interface.hpp>
 #include <autoware/behavior_velocity_planner_common/plugin_wrapper.hpp>
-#include <autoware_utils_debug/time_keeper.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -54,13 +53,7 @@ public:
 
   RequiredSubscriptionInfo getRequiredSubscriptions() const { return required_subscriptions_; }
 
-  void setTimeKeeper(const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper)
-  {
-    time_keeper_ = time_keeper;
-  }
-
 private:
-  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   pluginlib::ClassLoader<PluginInterface> plugin_loader_;
   std::vector<std::shared_ptr<PluginInterface>> scene_manager_plugins_;
   RequiredSubscriptionInfo required_subscriptions_;

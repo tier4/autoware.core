@@ -16,7 +16,6 @@
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware_utils_debug/time_keeper.hpp>
 
 #include <boost/format.hpp>
 
@@ -30,7 +29,6 @@ BehaviorVelocityPlannerManager::BehaviorVelocityPlannerManager()
 : plugin_loader_(
     "autoware_behavior_velocity_planner", "autoware::behavior_velocity_planner::PluginInterface")
 {
-  time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>();
 }
 
 void BehaviorVelocityPlannerManager::launchScenePlugin(
@@ -84,14 +82,9 @@ BehaviorVelocityPlannerManager::planPathVelocity(
   const std::shared_ptr<const PlannerData> & planner_data,
   const autoware_internal_planning_msgs::msg::PathWithLaneId & input_path_msg)
 {
-  autoware_utils_debug::ScopedTimeTrack st(
-    "BehaviorVelocityPlannerManager::planPathVelocity", *time_keeper_);
   autoware_internal_planning_msgs::msg::PathWithLaneId output_path_msg = input_path_msg;
 
   for (const auto & plugin : scene_manager_plugins_) {
-    autoware_utils_debug::ScopedTimeTrack plugin_st(
-      std::string(plugin->getModuleName()), *time_keeper_);
-    plugin->setTimeKeeper(time_keeper_);
     plugin->updateSceneModuleInstances(planner_data, input_path_msg);
     plugin->plan(&output_path_msg);
   }
