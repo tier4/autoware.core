@@ -312,6 +312,7 @@ std::optional<PathWithLaneId> PathGenerator::generate_path(
   }
 
   std::optional<lanelet::ConstLanelet> goal_lanelet_for_path = std::nullopt;
+  std::optional<double> s_goal_position = std::nullopt;
   for (auto [it, s] = std::make_tuple(lanelets.begin(), 0.); it != lanelets.end(); ++it) {
     const auto & lane_id = it->id();
     if (std::any_of(lanelets.begin(), it, [lane_id](const lanelet::ConstLanelet & lanelet) {
@@ -329,6 +330,7 @@ std::optional<PathWithLaneId> PathGenerator::generate_path(
         s + lanelet::utils::getArcCoordinates({*it}, planner_data_.goal_pose).length;
       if (s_goal < s_end) {
         goal_lanelet_for_path = *it;
+        s_goal_position = s_goal;
         s_end = s_goal;
       }
     }
@@ -343,8 +345,14 @@ std::optional<PathWithLaneId> PathGenerator::generate_path(
     lanelets, std::max(0., s_start - vehicle_info_.max_longitudinal_offset_m),
     s_end + vehicle_info_.max_longitudinal_offset_m, vehicle_info_.vehicle_length_m);
   if (s_intersection) {
-    s_end =
-      std::min(s_end, std::max(0., *s_intersection - vehicle_info_.max_longitudinal_offset_m));
+    const auto s_intersection_cut =
+      std::max(0., *s_intersection - vehicle_info_.max_longitudinal_offset_m);
+    // If goal is set, don't cut s_end shorter than goal position
+    if (s_goal_position && s_intersection_cut < *s_goal_position) {
+      s_end = std::min(s_end, *s_goal_position);
+    } else {
+      s_end = std::min(s_end, s_intersection_cut);
+    }
   }
 
   return generate_path(lanelets, s_start, s_end, goal_lanelet_for_path, params);
