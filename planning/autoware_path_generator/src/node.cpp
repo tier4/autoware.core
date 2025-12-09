@@ -345,13 +345,11 @@ std::optional<PathWithLaneId> PathGenerator::generate_path(
     lanelets, std::max(0., s_start - vehicle_info_.max_longitudinal_offset_m),
     s_end + vehicle_info_.max_longitudinal_offset_m, vehicle_info_.vehicle_length_m);
   if (s_intersection) {
-    const auto s_intersection_cut =
-      std::max(0., *s_intersection - vehicle_info_.max_longitudinal_offset_m);
-    // If goal is set, don't cut s_end shorter than goal position
-    if (s_goal_position && s_intersection_cut < *s_goal_position) {
-      s_end = std::min(s_end, *s_goal_position);
-    } else {
-      s_end = std::min(s_end, s_intersection_cut);
+    s_end =
+     std::min(s_end, std::max(0., *s_intersection - vehicle_info_.max_longitudinal_offset_m));
+    // If s_end is cut before goal position, clear goal_lanelet_for_path
+    if (s_goal_position && s_end < *s_goal_position) {
+      goal_lanelet_for_path = std::nullopt;
     }
   }
 
