@@ -6,10 +6,14 @@ autoware_package()
 
 find_package(Boost REQUIRED)
 
+find_package(tf2_ros REQUIRED)
+
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/predicted_path_utils.cpp
   src/conversion.cpp
 )
+
+target_link_libraries(${PROJECT_NAME} PUBLIC ${tf2_ros_TARGETS})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_ros REQUIRED)
