@@ -11,6 +11,10 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/conversion.cpp
 )
 
+ament_target_dependencies(${PROJECT_NAME}
+  tf2_ros
+)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_ros REQUIRED)
 
