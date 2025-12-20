@@ -29,3 +29,18 @@ endif()
 ament_export_dependencies(tf2_ros)
 
 autoware_ament_auto_package()
+
+# Debug:  Check what was actually exported
+message(WARNING "=== POST-PACKAGE DEBUG autoware_object_recognition_utils ===")
+get_directory_property(export_targets DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} EXPORT_TARGETS)
+message(WARNING "EXPORT_TARGETS: ${export_targets}")
+
+# Check if the config file will be generated
+set(config_file "${CMAKE_CURRENT_BINARY_DIR}/autoware_object_recognition_utilsConfig.cmake")
+if(EXISTS "${config_file}")
+  message(WARNING "Config file exists at:  ${config_file}")
+  file(READ "${config_file}" config_contents)
+  message(WARNING "Config file contents: ${config_contents}")
+endif()
+
+message(WARNING "=== END POST-PACKAGE DEBUG ===")
