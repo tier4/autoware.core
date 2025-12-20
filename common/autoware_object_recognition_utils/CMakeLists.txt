@@ -5,15 +5,15 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(Boost REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/predicted_path_utils.cpp
   src/conversion.cpp
 )
 
-ament_target_dependencies(${PROJECT_NAME}
-  tf2_ros
-)
+ament_target_dependencies(${PROJECT_NAME} tf2_ros)
+ament_export_dependencies(tf2_ros)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_ros REQUIRED)
