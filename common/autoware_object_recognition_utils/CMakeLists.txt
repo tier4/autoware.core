@@ -6,11 +6,11 @@ autoware_package()
 
 find_package(Boost REQUIRED)
 
-# Let ament_auto find all dependencies from package. xml
+# Let ament_auto find all dependencies from package.xml
 ament_auto_find_build_dependencies()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
-  src/predicted_path_utils. cpp
+  src/predicted_path_utils.cpp
   src/conversion.cpp
 )
 
@@ -26,27 +26,6 @@ if(BUILD_TESTING)
   )
 endif()
 
-# Manually export with targets BEFORE autoware_ament_auto_package
-# and remove from the auto-handled list to prevent double-install
-install(
-  TARGETS ${PROJECT_NAME}
-  EXPORT export_${PROJECT_NAME}
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-  INCLUDES DESTINATION include
-)
-
-# Export the targets
-ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-
-# Also export old-style
-ament_export_libraries(${PROJECT_NAME})
-
-# Explicitly export tf2_ros dependency
-ament_export_dependencies(tf2_ros)
-
-# Clear the LIBRARIES list so autoware_ament_auto_package doesn't try to install again
-set(${PROJECT_NAME}_LIBRARIES "")
-
-autoware_ament_auto_package()
+# Use standard ament_auto_package instead of autoware_ament_auto_package
+# This properly exports targets
+ament_auto_package()
