@@ -225,17 +225,13 @@ public:
     explicit Pointcloud(rclcpp::Node & node) : preprocess_params_(node) {}
 
     void preprocess_pointcloud(
-      pcl::PointCloud<pcl::PointXYZ> && arg_pointcloud,
-      const std::vector<TrajectoryPoint> & raw_trajectory, nav_msgs::msg::Odometry current_odometry,
-      double min_deceleration_distance,
-      const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-      const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
-      const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold)
+      pcl::PointCloud<pcl::PointXYZ> && arg_pointcloud, const PlannerData & planner_data,
+      const std::vector<TrajectoryPoint> & raw_trajectory, double min_deceleration_distance)
+
     {
       pointcloud = arg_pointcloud;
-      const auto preprocessed_result = filter_and_cluster_point_clouds(
-        raw_trajectory, current_odometry, min_deceleration_distance, vehicle_info,
-        trajectory_polygon_collision_check, ego_nearest_dist_threshold, ego_nearest_yaw_threshold);
+      const auto preprocessed_result =
+        filter_and_cluster_point_clouds(raw_trajectory, planner_data, min_deceleration_distance);
       filtered_pointcloud_ptr = preprocessed_result.first;
       cluster_indices = preprocessed_result.second;
     }
@@ -293,11 +289,8 @@ public:
 
     std::pair<pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<pcl::PointIndices>>
     filter_and_cluster_point_clouds(
-      const std::vector<TrajectoryPoint> & raw_trajectory,
-      const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
-      const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-      const TrajectoryPolygonCollisionCheck & collision_check,
-      const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold);
+      const std::vector<TrajectoryPoint> & raw_trajectory, const PlannerData & planner_data,
+      double min_deceleration_distance) const;
   };
 
   void process_predicted_objects(
@@ -318,6 +311,10 @@ public:
 
   // both of motion_velocity_planner own and motion_velocity_planner_modules use this parameter
   TrajectoryPolygonCollisionCheck trajectory_polygon_collision_check{};
+
+  mutable std::optional<std::vector<TrajectoryPoint>> decimated_trajectory_points_from_ego;
+  std::vector<TrajectoryPoint> get_decimated_trajectory_points_from_ego(
+    const std::vector<TrajectoryPoint> & traj_points) const;
 
   // other internal data
   // traffic_light_id_map_raw is the raw observation, while traffic_light_id_map_keep_last keeps the

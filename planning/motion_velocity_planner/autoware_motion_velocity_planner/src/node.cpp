@@ -175,6 +175,7 @@ bool MotionVelocityPlannerNode::update_planner_data(
   processing_times["update_planner_data.pred_obj"] = sw.toc(true);
 
   const auto no_ground_pointcloud_ptr = sub_no_ground_pointcloud_.take_data();
+  planner_data_->decimated_trajectory_points_from_ego.reset();
   if (check_with_log(
         no_ground_pointcloud_ptr, "Waiting for pointcloud",
         required_subscriptions.no_ground_pointcloud)) {
@@ -185,10 +186,8 @@ bool MotionVelocityPlannerNode::update_planner_data(
     sw.tic("preprocess_pointcloud");
     if (no_ground_pointcloud) {
       planner_data_->no_ground_pointcloud.preprocess_pointcloud(
-        std::move(*no_ground_pointcloud), input_traj_points, planner_data_->current_odometry,
-        planner_data_->calculate_min_deceleration_distance(0.0).value_or(0.0),
-        planner_data_->vehicle_info_, planner_data_->trajectory_polygon_collision_check,
-        planner_data_->ego_nearest_dist_threshold, planner_data_->ego_nearest_yaw_threshold);
+        std::move(*no_ground_pointcloud), *planner_data_, input_traj_points,
+        planner_data_->calculate_min_deceleration_distance(0.0).value_or(0.0));
     }
     processing_times["update_planner_data.pointcloud.preprocess_for_obstacle_*_modules"] =
       sw.toc("preprocess_pointcloud");

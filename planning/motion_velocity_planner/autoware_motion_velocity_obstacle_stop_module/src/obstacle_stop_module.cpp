@@ -269,6 +269,7 @@ VelocityPlanningResult ObstacleStopModule::plan(
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
   // 1. init variables
+  time_keeper_->start_track("init_var");
   debug_data_ptr_ = std::make_shared<DebugData>();
   const double x_offset_to_bumper =
     calc_x_offset_to_bumper(planner_data->is_driving_forward, planner_data->vehicle_info_);
@@ -280,13 +281,13 @@ VelocityPlanningResult ObstacleStopModule::plan(
     planner_data->current_acceleration.accel.accel.linear.x);
   trajectory_polygon_for_inside_map_.clear();
   decimated_traj_polys_ = std::nullopt;
+  time_keeper_->end_track("init_var");
 
   // 2. pre-process
-  const auto decimated_traj_points = utils::decimate_trajectory_points_from_ego(
-    raw_trajectory_points, planner_data->current_odometry.pose.pose,
-    planner_data->ego_nearest_dist_threshold, planner_data->ego_nearest_yaw_threshold,
-    planner_data->trajectory_polygon_collision_check.decimate_trajectory_step_length,
-    stop_planning_param_.stop_margin);
+  time_keeper_->start_track("preprocess");
+  const auto base_decimated_points = planner_data->get_decimated_trajectory_points_from_ego(raw_trajectory_points);
+  const auto decimated_traj_points = utils::get_extended_trajectory_points(base_decimated_points, planner_data->trajectory_polygon_collision_check.decimate_trajectory_step_length, stop_planning_param_.stop_margin);
+  time_keeper_->end_track("preprocess");
 
   // 3. filter obstacles of predicted objects
   auto stop_obstacles_for_predicted_object = filter_stop_obstacle_for_predicted_object(
@@ -303,9 +304,11 @@ VelocityPlanningResult ObstacleStopModule::plan(
     planner_data->trajectory_polygon_collision_check);
 
   // 5. concat stop obstacles by predicted objects and point cloud
+  time_keeper_->start_track("concat");
   const std::vector<StopObstacle> stop_obstacles =
     autoware::motion_velocity_planner::utils::concat_vectors(
       std::move(stop_obstacles_for_predicted_object), std::move(stop_obstacles_for_point_cloud));
+  time_keeper_->end_track("concat");
 
   // 6. plan stop
   const auto stop_point =
@@ -315,10 +318,12 @@ VelocityPlanningResult ObstacleStopModule::plan(
   publish_debug_info();
 
   // 8. generate VelocityPlanningResult
+  time_keeper_->start_track("result");
   VelocityPlanningResult result;
   if (stop_point) {
     result.stop_points.push_back(*stop_point);
   }
+  time_keeper_->end_track("result");
 
   return result;
 }

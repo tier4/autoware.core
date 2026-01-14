@@ -41,7 +41,6 @@
 namespace autoware::motion_velocity_planner
 {
 using autoware_perception_msgs::msg::PredictedPath;
-namespace bg = boost::geometry;
 
 namespace
 {
@@ -422,24 +421,22 @@ std::vector<StopPoint> PlannerData::calculate_map_stop_points(
 
 std::pair<pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<pcl::PointIndices>>
 PlannerData::Pointcloud::filter_and_cluster_point_clouds(
-  const std::vector<TrajectoryPoint> & raw_trajectory,
-  const nav_msgs::msg::Odometry & current_odometry, double min_deceleration_distance,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check,
-  const double ego_nearest_dist_threshold, const double ego_nearest_yaw_threshold)
+  const std::vector<TrajectoryPoint> & raw_trajectory, const PlannerData & planner_data,
+  double min_deceleration_distance) const
 {
   pcl::PointCloud<pcl::PointXYZ>::Ptr ret_pointcloud_ptr = pointcloud.makeShared();
   std::vector<pcl::PointIndices> ret_clusters{};
 
   const auto & filter_by_trajectory_param = preprocess_params_.filter_by_trajectory_polygon;
-  const auto & traj_poly_param = trajectory_polygon_collision_check;
+  const auto & traj_poly_param = planner_data.trajectory_polygon_collision_check;
   if (
     !raw_trajectory.empty() && (filter_by_trajectory_param.enable_monolithic_crop_box ||
                                 filter_by_trajectory_param.enable_multi_polygon_filtering)) {
     const auto decimated_trajectory =
       autoware::motion_velocity_planner::utils::decimate_trajectory_points_from_ego(
-        raw_trajectory, current_odometry.pose.pose, ego_nearest_dist_threshold,
-        ego_nearest_yaw_threshold, traj_poly_param.decimate_trajectory_step_length,
+        raw_trajectory, planner_data.current_odometry.pose.pose,
+        planner_data.ego_nearest_dist_threshold, planner_data.ego_nearest_yaw_threshold,
+        traj_poly_param.decimate_trajectory_step_length,
         traj_poly_param.goal_extended_trajectory_length);
 
     const double trajectory_trim_length =
@@ -454,7 +451,7 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
 
     const auto traj_polygons =
       autoware::motion_velocity_planner::polygon_utils::create_one_step_polygons(
-        trimmed_trajectory, vehicle_info, current_odometry.pose.pose,
+        trimmed_trajectory, planner_data.vehicle_info_, planner_data.current_odometry.pose.pose,
         filter_by_trajectory_param.lateral_margin, traj_poly_param.enable_to_consider_current_pose,
         traj_poly_param.time_to_convergence, traj_poly_param.decimate_trajectory_step_length);
 
@@ -462,7 +459,7 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
       const auto input_pointcloud_ptr = ret_pointcloud_ptr;
       ret_pointcloud_ptr = crop_by_monolithic_trajectory_polygon(
         input_pointcloud_ptr, filter_by_trajectory_param, traj_polygons, decimated_trajectory,
-        vehicle_info);
+        planner_data.vehicle_info_);
     }
     if (filter_by_trajectory_param.enable_multi_polygon_filtering && !ret_pointcloud_ptr->empty()) {
       const auto input_pointcloud_ptr = ret_pointcloud_ptr;
@@ -484,6 +481,19 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
     ret_clusters = make_individual_cluster_indices(ret_pointcloud_ptr);
   }
   return std::make_pair(ret_pointcloud_ptr, ret_clusters);
+}
+
+std::vector<TrajectoryPoint> PlannerData::get_decimated_trajectory_points_from_ego(
+  const std::vector<TrajectoryPoint> & traj_points) const
+{
+  if (!decimated_trajectory_points_from_ego) {
+    decimated_trajectory_points_from_ego =
+      autoware::motion_velocity_planner::utils::decimate_trajectory_points_from_ego(
+        traj_points, current_odometry.pose.pose, ego_nearest_dist_threshold,
+        ego_nearest_yaw_threshold,
+        trajectory_polygon_collision_check.decimate_trajectory_step_length, 0.0);
+  }
+  return *decimated_trajectory_points_from_ego;
 }
 
 }  // namespace autoware::motion_velocity_planner

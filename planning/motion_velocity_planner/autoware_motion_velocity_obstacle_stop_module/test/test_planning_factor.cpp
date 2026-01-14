@@ -191,9 +191,7 @@ TEST_F(PlanningFactorTest, TestWithPointCloudObstacle)
     module_->publish_planning_factor();
     single_point->header.stamp = time_us + i * pointcloud_period_us;
     planner_data->no_ground_pointcloud.preprocess_pointcloud(
-      std::move(*single_point), trajectory_.points, odometry_, 100.0, planner_data->vehicle_info_,
-      planner_data->trajectory_polygon_collision_check, planner_data->ego_nearest_dist_threshold,
-      planner_data->ego_nearest_yaw_threshold);
+      std::move(*single_point), *planner_data, trajectory_.points, 100.0);
 
     module_->plan(trajectory_.points, trajectory_.points, planner_data);
   }
