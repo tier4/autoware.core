@@ -4,6 +4,7 @@ project(autoware_ekf_localizer)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocast_components REQUIRED)
 find_package(Eigen3 REQUIRED)
 
 include_directories(
@@ -24,10 +25,10 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/ekf_module.cpp
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::ekf_localizer::EKFLocalizer"
   EXECUTABLE ${PROJECT_NAME}_node
-  EXECUTOR SingleThreadedExecutor
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)

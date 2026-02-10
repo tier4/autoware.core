@@ -24,6 +24,7 @@ else()
   endif()
 endif()
 
+find_package(agnocast_components REQUIRED)
 find_package(OpenMP)
 
 find_package(PCL REQUIRED COMPONENTS common io registration)
@@ -51,10 +52,10 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 link_directories(${PCL_LIBRARY_DIRS})
 target_link_libraries(${PROJECT_NAME} ${PCL_LIBRARIES} multigrid_ndt_omp)
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::ndt_scan_matcher::NDTScanMatcher"
   EXECUTABLE ${PROJECT_NAME}_node
-  EXECUTOR MultiThreadedExecutor
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 if(BUILD_TESTING)
