@@ -23,6 +23,7 @@
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_pcl/transforms.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/srv/get_differential_point_cloud_map.hpp>
@@ -80,7 +81,7 @@ private:
 
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr loaded_pcd_pub_;
 
-  rclcpp::Client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedPtr
+  agnocast::Client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedPtr
     pcd_loader_client_;
 
   NdtPtrType & ndt_ptr_;

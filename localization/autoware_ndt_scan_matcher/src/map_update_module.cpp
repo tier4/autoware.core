@@ -33,7 +33,8 @@ MapUpdateModule::MapUpdateModule(
     "debug/loaded_pointcloud_map", rclcpp::QoS{1}.transient_local());
 
   pcd_loader_client_ =
-    node->create_client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>("pcd_loader_service");
+    agnocast::create_client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>(
+      node, "pcd_loader_service");
 
   secondary_ndt_ptr_.reset(new NdtType);
 
@@ -235,7 +236,7 @@ bool MapUpdateModule::update_ndt(
 {
   diagnostics_ptr->add_key_value("maps_size_before", ndt.getCurrentMapIDs().size());
 
-  auto request = std::make_shared<autoware_map_msgs::srv::GetDifferentialPointCloudMap::Request>();
+  auto request = pcd_loader_client_->borrow_loaned_request();
 
   request->area.center_x = static_cast<float>(position.x);
   request->area.center_y = static_cast<float>(position.y);
@@ -254,10 +255,10 @@ bool MapUpdateModule::update_ndt(
 
   // send a request to map_loader
   auto result{pcd_loader_client_->async_send_request(
-    request,
-    [](rclcpp::Client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedFuture) {})};
+    std::move(request),
+    [](agnocast::Client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedFuture) {})};
 
-  std::future_status status = result.wait_for(std::chrono::seconds(0));
+  std::future_status status = result.future.wait_for(std::chrono::seconds(0));
   while (status != std::future_status::ready) {
     // check is_succeed_call_pcd_loader
     if (!rclcpp::ok()) {
@@ -269,12 +270,13 @@ bool MapUpdateModule::update_ndt(
         diagnostic_msgs::msg::DiagnosticStatus::WARN, message.str());
       return false;  // No update
     }
-    status = result.wait_for(std::chrono::seconds(1));
+    status = result.future.wait_for(std::chrono::seconds(1));
   }
   diagnostics_ptr->add_key_value("is_succeed_call_pcd_loader", true);
 
-  auto & maps_to_add = result.get()->new_pointcloud_with_ids;
-  auto & map_ids_to_remove = result.get()->ids_to_remove;
+  auto response = result.future.get();
+  auto & maps_to_add = response->new_pointcloud_with_ids;
+  auto & map_ids_to_remove = response->ids_to_remove;
 
   diagnostics_ptr->add_key_value("maps_to_add_size", maps_to_add.size());
   diagnostics_ptr->add_key_value("maps_to_remove_size", map_ids_to_remove.size());
