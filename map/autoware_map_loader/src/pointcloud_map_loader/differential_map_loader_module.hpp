@@ -17,6 +17,7 @@
 
 #include "utils.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_map_msgs/srv/get_differential_point_cloud_map.hpp"
@@ -29,6 +30,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -37,6 +39,7 @@ namespace autoware::map_loader
 class DifferentialMapLoaderModule
 {
   using GetDifferentialPointCloudMap = autoware_map_msgs::srv::GetDifferentialPointCloudMap;
+  using AgnocastServiceT = agnocast::Service<GetDifferentialPointCloudMap>;
 
 public:
   explicit DifferentialMapLoaderModule(
@@ -45,15 +48,17 @@ public:
 private:
   rclcpp::Logger logger_;
 
+  mutable std::mutex service_mutex_;
   std::map<std::string, PCDFileMetadata> all_pcd_file_metadata_dict_;
-  rclcpp::Service<GetDifferentialPointCloudMap>::SharedPtr get_differential_pcd_maps_service_;
+  rclcpp::CallbackGroup::SharedPtr agnocast_callback_group_;
+  AgnocastServiceT::SharedPtr agnocast_get_differential_pcd_maps_service_;
 
-  [[nodiscard]] bool on_service_get_differential_point_cloud_map(
-    GetDifferentialPointCloudMap::Request::SharedPtr req,
-    GetDifferentialPointCloudMap::Response::SharedPtr res) const;
+  void on_agnocast_service_get_differential_point_cloud_map(
+    const agnocast::ipc_shared_ptr<AgnocastServiceT::RequestT> & req,
+    agnocast::ipc_shared_ptr<AgnocastServiceT::ResponseT> & res);
   void differential_area_load(
     const autoware_map_msgs::msg::AreaInfo & area_info, const std::vector<std::string> & cached_ids,
-    const GetDifferentialPointCloudMap::Response::SharedPtr & response) const;
+    GetDifferentialPointCloudMap::Response & response) const;
   [[nodiscard]] autoware_map_msgs::msg::PointCloudMapCellWithID load_point_cloud_map_cell_with_id(
     const std::string & path, const std::string & map_id) const;
 };
