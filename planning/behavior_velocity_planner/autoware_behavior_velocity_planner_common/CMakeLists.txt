@@ -4,6 +4,8 @@ project(autoware_behavior_velocity_planner_common)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/scene_module_interface.cpp
   src/planner_data.cpp

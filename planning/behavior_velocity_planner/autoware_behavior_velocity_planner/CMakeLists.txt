@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_behavior_velocity_planner)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocastlib REQUIRED)
 
 autoware_package()
 

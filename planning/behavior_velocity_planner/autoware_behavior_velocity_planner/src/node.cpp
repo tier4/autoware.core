@@ -71,6 +71,17 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
     "~/service/unload_plugin",
     std::bind(&BehaviorVelocityPlannerNode::onUnloadPlugin, this, _1, _2));
 
+  // Agnocast polling subscribers
+  sub_no_ground_pointcloud_ =
+    std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
+      this, "~/input/no_ground_pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos());
+  sub_predicted_objects_ =
+    std::make_shared<agnocast::PollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>>(
+      this, "~/input/dynamic_objects");
+  sub_occupancy_grid_ =
+    std::make_shared<agnocast::PollingSubscriber<nav_msgs::msg::OccupancyGrid>>(
+      this, "~/input/occupancy_grid");
+
   // set velocity smoother param
   onParam();
 
@@ -134,7 +145,7 @@ void BehaviorVelocityPlannerNode::onParam()
 }
 
 void BehaviorVelocityPlannerNode::processNoGroundPointCloud(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> & msg)
 {
   geometry_msgs::msg::TransformStamped transform;
   try {
@@ -251,12 +262,25 @@ bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
   const auto required_subscriptions = planner_manager_.getRequiredSubscriptions();
 
   is_ready &= getData(planner_data_.current_acceleration, sub_acceleration_, "acceleration");
-  is_ready &= getData(
-    planner_data_.predicted_objects, sub_predicted_objects_, "predicted_objects",
-    required_subscriptions.predicted_objects);
-  is_ready &= getData(
-    planner_data_.occupancy_grid, sub_occupancy_grid_, "occupancy_grid",
-    required_subscriptions.occupancy_grid_map);
+  if (required_subscriptions.predicted_objects) {
+    const auto predicted_objects = sub_predicted_objects_->take_data();
+    if (predicted_objects) {
+      planner_data_.predicted_objects = predicted_objects;
+    } else {
+      logData("predicted_objects");
+      is_ready = false;
+    }
+  }
+  if (required_subscriptions.occupancy_grid_map) {
+    const auto occupancy_grid = sub_occupancy_grid_->take_data();
+    if (occupancy_grid) {
+      planner_data_.occupancy_grid =
+        std::make_shared<nav_msgs::msg::OccupancyGrid>(*occupancy_grid);
+    } else {
+      logData("occupancy_grid");
+      is_ready = false;
+    }
+  }
 
   nav_msgs::msg::Odometry::ConstSharedPtr odometry;
   is_ready &= getData(odometry, sub_vehicle_odometry_, "odometry");
@@ -264,12 +288,14 @@ bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
     processOdometry(odometry);
   }
 
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr no_ground_pointcloud;
-  is_ready &= getData(
-    no_ground_pointcloud, sub_no_ground_pointcloud_, "pointcloud",
-    required_subscriptions.no_ground_pointcloud);
-  if (no_ground_pointcloud) {
-    processNoGroundPointCloud(no_ground_pointcloud);
+  if (required_subscriptions.no_ground_pointcloud) {
+    const auto no_ground_pointcloud = sub_no_ground_pointcloud_->take_data();
+    if (no_ground_pointcloud) {
+      processNoGroundPointCloud(no_ground_pointcloud);
+    } else {
+      logData("pointcloud");
+      is_ready = false;
+    }
   }
 
   const auto map_data = sub_lanelet_map_.take_data();

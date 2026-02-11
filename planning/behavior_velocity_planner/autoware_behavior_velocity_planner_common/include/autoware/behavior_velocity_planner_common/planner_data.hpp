@@ -31,6 +31,8 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
@@ -52,7 +54,7 @@ struct PlannerData
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr current_acceleration;
   static constexpr double velocity_buffer_time_sec = 10.0;
   std::deque<geometry_msgs::msg::TwistStamped> velocity_buffer;
-  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr predicted_objects;
+  agnocast::ipc_shared_ptr<const autoware_perception_msgs::msg::PredictedObjects> predicted_objects;
   pcl::PointCloud<pcl::PointXYZ>::ConstPtr no_ground_pointcloud;
 
   nav_msgs::msg::OccupancyGrid::ConstSharedPtr occupancy_grid;

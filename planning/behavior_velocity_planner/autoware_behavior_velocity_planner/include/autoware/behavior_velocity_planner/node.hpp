@@ -24,6 +24,8 @@
 #include <autoware_utils_system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
@@ -68,13 +70,10 @@ private:
     trigger_sub_path_with_lane_id_;
 
   // polling subscribers
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<
-    autoware_perception_msgs::msg::PredictedObjects>
-    sub_predicted_objects_{this, "~/input/dynamic_objects"};
+  agnocast::PollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr
+    sub_predicted_objects_;
 
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<sensor_msgs::msg::PointCloud2>
-    sub_no_ground_pointcloud_{
-      this, "~/input/no_ground_pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos()};
+  agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>::SharedPtr sub_no_ground_pointcloud_;
 
   autoware_utils_rclcpp::InterProcessPollingSubscriber<nav_msgs::msg::Odometry>
     sub_vehicle_odometry_{this, "~/input/vehicle_odometry"};
@@ -87,8 +86,7 @@ private:
     autoware_perception_msgs::msg::TrafficLightGroupArray>
     sub_traffic_signals_{this, "~/input/traffic_signals"};
 
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<nav_msgs::msg::OccupancyGrid>
-    sub_occupancy_grid_{this, "~/input/occupancy_grid"};
+  agnocast::PollingSubscriber<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_occupancy_grid_;
 
   autoware_utils_rclcpp::InterProcessPollingSubscriber<
     LaneletMapBin, autoware_utils_rclcpp::polling_policy::Newest>
@@ -102,7 +100,8 @@ private:
 
   void onParam();
 
-  void processNoGroundPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
+  void processNoGroundPointCloud(
+    const agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> & msg);
   void processOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
   void processTrafficSignals(
     const autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr msg);
