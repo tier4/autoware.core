@@ -66,6 +66,17 @@ MotionVelocityPlannerNode::MotionVelocityPlannerNode(const rclcpp::NodeOptions &
   using std::placeholders::_1;
   using std::placeholders::_2;
 
+  // Agnocast polling subscribers
+  sub_no_ground_pointcloud_ =
+    std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
+      this, "~/input/no_ground_pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos());
+  sub_predicted_objects_ =
+    std::make_shared<agnocast::PollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>>(
+      this, "~/input/dynamic_objects");
+  sub_occupancy_grid_ =
+    std::make_shared<agnocast::PollingSubscriber<nav_msgs::msg::OccupancyGrid>>(
+      this, "~/input/occupancy_grid");
+
   // Subscribers
   sub_trajectory_ = this->create_subscription<autoware_planning_msgs::msg::Trajectory>(
     "~/input/trajectory", 1, std::bind(&MotionVelocityPlannerNode::on_trajectory, this, _1),
@@ -166,14 +177,15 @@ bool MotionVelocityPlannerNode::update_planner_data(
     planner_data_->current_acceleration = *ego_accel_ptr;
   processing_times["update_planner_data.accel"] = sw.toc(true);
 
-  const auto predicted_objects_ptr = sub_predicted_objects_.take_data();
+  const auto predicted_objects_ptr = sub_predicted_objects_->take_data();
   if (check_with_log(
         predicted_objects_ptr, "Waiting for predicted objects",
-        required_subscriptions.predicted_objects))
+        required_subscriptions.predicted_objects)) {
     planner_data_->process_predicted_objects(*predicted_objects_ptr);
+  }
   processing_times["update_planner_data.pred_obj"] = sw.toc(true);
 
-  const auto no_ground_pointcloud_ptr = sub_no_ground_pointcloud_.take_data();
+  const auto no_ground_pointcloud_ptr = sub_no_ground_pointcloud_->take_data();
   if (check_with_log(
         no_ground_pointcloud_ptr, "Waiting for pointcloud",
         required_subscriptions.no_ground_pointcloud)) {
@@ -194,7 +206,7 @@ bool MotionVelocityPlannerNode::update_planner_data(
   }
   processing_times["update_planner_data.pointcloud"] = sw.toc(true);
 
-  const auto occupancy_grid_ptr = sub_occupancy_grid_.take_data();
+  const auto occupancy_grid_ptr = sub_occupancy_grid_->take_data();
   if (check_with_log(
         occupancy_grid_ptr, "Waiting for the occupancy grid",
         required_subscriptions.occupancy_grid_map))
@@ -227,7 +239,7 @@ bool MotionVelocityPlannerNode::update_planner_data(
 
 std::optional<pcl::PointCloud<pcl::PointXYZ>>
 MotionVelocityPlannerNode::process_no_ground_pointcloud(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> & msg)
 {
   geometry_msgs::msg::TransformStamped transform;
   const bool is_pcl_time_valid = (this->get_clock()->now() - rclcpp::Time(msg->header.stamp)) <

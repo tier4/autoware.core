@@ -32,6 +32,7 @@
   <depend>autoware_utils_logging</depend>
   <depend>autoware_utils_pcl</depend>
   <depend>autoware_utils_rclcpp</depend>
+  <depend>agnocastlib</depend>
   <depend>autoware_utils_system</depend>
   <depend>autoware_velocity_smoother</depend>
   <depend>eigen</depend>

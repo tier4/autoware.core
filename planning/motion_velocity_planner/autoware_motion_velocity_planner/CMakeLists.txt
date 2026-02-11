@@ -3,6 +3,7 @@ project(autoware_motion_velocity_planner)
 
 find_package(autoware_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(agnocastlib REQUIRED)
 
 autoware_package()
 
