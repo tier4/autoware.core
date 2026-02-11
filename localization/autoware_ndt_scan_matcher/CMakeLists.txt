@@ -24,6 +24,9 @@ else()
   endif()
 endif()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 find_package(OpenMP)
 
 find_package(PCL REQUIRED COMPONENTS common io registration)
@@ -55,6 +58,13 @@ rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::ndt_scan_matcher::NDTScanMatcher"
   EXECUTABLE ${PROJECT_NAME}_node
   EXECUTOR MultiThreadedExecutor
+)
+
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "autoware::ndt_scan_matcher::NDTScanMatcher"
+  EXECUTABLE agnocast_${PROJECT_NAME}_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

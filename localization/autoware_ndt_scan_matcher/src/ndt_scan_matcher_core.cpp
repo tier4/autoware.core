@@ -104,9 +104,6 @@ NDTScanMatcher::NDTScanMatcher(const rclcpp::NodeOptions & options)
 
   auto initial_pose_sub_opt = rclcpp::SubscriptionOptions();
   initial_pose_sub_opt.callback_group = initial_pose_callback_group;
-  auto sensor_sub_opt = rclcpp::SubscriptionOptions();
-  sensor_sub_opt.callback_group = sensor_callback_group;
-
   constexpr double map_update_dt = 1.0;
   constexpr auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(map_update_dt));
@@ -117,10 +114,16 @@ NDTScanMatcher::NDTScanMatcher(const rclcpp::NodeOptions & options)
     "ekf_pose_with_covariance", 100,
     std::bind(&NDTScanMatcher::callback_initial_pose, this, std::placeholders::_1),
     initial_pose_sub_opt);
-  sensor_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-    "points_raw", rclcpp::SensorDataQoS().keep_last(1),
-    std::bind(&NDTScanMatcher::callback_sensor_points, this, std::placeholders::_1),
-    sensor_sub_opt);
+  agnocast::SubscriptionOptions agnocast_sensor_sub_opt;
+  agnocast_sensor_sub_opt.callback_group = sensor_callback_group;
+  sensor_points_sub_ = agnocast::create_subscription<sensor_msgs::msg::PointCloud2>(
+    this, "points_raw", rclcpp::SensorDataQoS().keep_last(1),
+    [this](agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> msg) {
+      auto shared_msg = std::shared_ptr<const sensor_msgs::msg::PointCloud2>(
+        msg.get(), [](const sensor_msgs::msg::PointCloud2 *) {});
+      this->callback_sensor_points(shared_msg);
+    },
+    agnocast_sensor_sub_opt);
 
   // Only if regularization is enabled, subscribe to the regularization base pose
   if (param_.ndt_regularization_enable) {
