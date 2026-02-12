@@ -249,9 +249,7 @@ protected:
       }
     }
 
-    if (!expired_module_ids.empty()) {
-      printDeletionInfo(expired_module_ids);
-    }
+    (void)expired_module_ids;
   }
 
   bool isModuleRegistered(const int64_t module_id)
@@ -264,7 +262,6 @@ protected:
     registered_module_id_set_.emplace(scene_module->getModuleId());
     scene_modules_.insert(scene_module);
 
-    printRegistrationInfo(scene_module->getModuleId());
   }
 
   size_t findEgoSegmentIndex(
@@ -301,71 +298,6 @@ protected:
 
   std::shared_ptr<planning_factor_interface::PlanningFactorInterface> planning_factor_interface_;
 
-private:
-  void appendCommonInfo(std::ostringstream & log)
-  {
-    if (planner_data_ && planner_data_->current_odometry) {
-      const auto & ego_pose = planner_data_->current_odometry->pose;
-      const auto & ego_velocity = planner_data_->current_velocity;
-
-      log << std::fixed << std::setprecision(2) << "Ego position: (" << ego_pose.position.x << ", "
-          << ego_pose.position.y << ", " << ego_pose.position.z << "), ";
-
-      if (ego_velocity) {
-        log << "velocity: (" << ego_velocity->twist.linear.x << ", " << ego_velocity->twist.linear.y
-            << ") m/s";
-        if (planner_data_->isVehicleStopped()) {
-          log << " (stopped)";
-        }
-      }
-      log << "\n";
-    }
-
-    log << "Registered Module IDs: [";
-    bool first = true;
-    for (const auto & module : scene_modules_) {
-      if (!first) {
-        log << ", ";
-      }
-      log << module->getModuleId();
-      first = false;
-    }
-    log << "]\n";
-  }
-
-  void printRegistrationInfo(int64_t module_id)
-  {
-    std::ostringstream log;
-
-    log << "\n=== BEHAVIOR VELOCITY PLANNER MODULE REGISTRATION ===\n"
-        << "Module Name: " << getModuleName() << "\n"
-        << "Module ID: " << module_id << "\n";
-
-    appendCommonInfo(log);
-    log << "========================================================\n";
-
-    RCLCPP_INFO(logger_, "%s", log.str().c_str());
-  }
-
-  void printDeletionInfo(const std::vector<int64_t> & expired_module_ids)
-  {
-    std::ostringstream log;
-
-    log << "\n=== BEHAVIOR VELOCITY PLANNER MODULE DELETION ===\n"
-        << "Module Name: " << getModuleName() << "\n"
-        << "Expired Module IDs: [";
-
-    for (size_t i = 0; i < expired_module_ids.size(); ++i) {
-      if (i > 0) log << ", ";
-      log << expired_module_ids[i];
-    }
-    log << "]\n";
-
-    appendCommonInfo(log);
-    log << "========================================================\n";
-
-    RCLCPP_INFO(logger_, "%s", log.str().c_str());
-  }
 };
 
 extern template SceneModuleManagerInterface<SceneModuleInterface>::SceneModuleManagerInterface(
