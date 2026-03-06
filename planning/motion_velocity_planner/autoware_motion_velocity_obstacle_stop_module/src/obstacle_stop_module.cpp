@@ -214,16 +214,6 @@ void ObstacleStopModule::init(rclcpp::Node & node, const std::string & module_na
   }
   pointcloud_segmentation_param_ = PointcloudSegmentationParam(node);
 
-  const double update_distance_th =
-    get_or_declare_parameter<double>(node, "obstacle_stop.stop_planning.update_distance_th");
-  const double min_off_duration =
-    get_or_declare_parameter<double>(node, "obstacle_stop.stop_planning.min_off_duration");
-  const double min_on_duration =
-    get_or_declare_parameter<double>(node, "obstacle_stop.stop_planning.min_on_duration");
-
-  path_length_buffer_ = autoware::motion_velocity_planner::obstacle_stop::PathLengthBuffer(
-    update_distance_th, min_off_duration, min_on_duration);
-
   // common publisher
   virtual_wall_publisher_ =
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/obstacle_stop/virtual_walls", 1);
@@ -956,31 +946,7 @@ std::optional<geometry_msgs::msg::Point> ObstacleStopModule::plan_stop(
     planner_data, traj_points, x_offset_to_bumper, determined_stop_obstacle,
     determined_zero_vel_dist);
 
-  if (determined_stop_obstacle->velocity >= stop_planning_param_.max_negative_velocity) {
-    // set stop_planning_debug_info
-    set_stop_planning_debug_info(determined_stop_obstacle, determined_desired_stop_margin);
-
-    return stop_point;
-  }
-  // Update path length buffer with current stop point
-  path_length_buffer_.update_buffer(
-    stop_point,
-    [traj_points](const geometry_msgs::msg::Point & point) {
-      return autoware::motion_utils::calcSignedArcLength(traj_points, 0, point);
-    },
-    clock_->now(), *determined_stop_obstacle, *determined_desired_stop_margin);
-
-  // Get nearest active stop point from buffer
-  const auto buffered_stop = path_length_buffer_.get_nearest_active_item();
-  if (buffered_stop) {
-    // Override with buffered stop point if available
-    set_stop_planning_debug_info(
-      buffered_stop->determined_stop_obstacle, buffered_stop->determined_desired_stop_margin);
-
-    return std::make_optional(buffered_stop->stop_point);
-  }
-
-  return std::nullopt;
+  return stop_point;
 }
 
 double ObstacleStopModule::calc_desired_stop_margin(

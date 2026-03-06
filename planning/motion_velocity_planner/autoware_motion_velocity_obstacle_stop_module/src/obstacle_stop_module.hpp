@@ -16,7 +16,6 @@
 #define OBSTACLE_STOP_MODULE_HPP_
 
 #include "parameters.hpp"
-#include "path_length_buffer.hpp"
 #include "stop_planning_debug_info.hpp"
 #include "type_alias.hpp"
 #include "types.hpp"
@@ -108,8 +107,6 @@ private:
   std::deque<PointcloudStopCandidate> pointcloud_stop_candidates{};
   std::optional<std::pair<rclcpp::Time, double>> last_observed_behavior_stop_time_and_margin_{
     std::nullopt};
-
-  autoware::motion_velocity_planner::obstacle_stop::PathLengthBuffer path_length_buffer_;
 
   // PointCloud-based stop obstacle history
   std::vector<StopObstacle> stop_pointcloud_obstacle_history_;
