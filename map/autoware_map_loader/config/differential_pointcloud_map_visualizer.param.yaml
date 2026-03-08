@@ -1,0 +1,11 @@
+/**:
+  ros__parameters:
+    # Center of the area to load [m] (used when use_pose is false)
+    center_x: 0.0
+    center_y: 0.0
+    # Radius of the cylindrical area [m]
+    radius: 200.0
+    # If true, subscribe to input/pose and use pose position as center
+    use_pose: false
+    # Update interval [s]
+    update_interval_sec: 1.0

@@ -102,6 +102,14 @@ Here, we assume that the pointcloud maps are divided into grids.
 Given a query and set of map IDs, the node sends a set of pointcloud maps that overlap with the queried area and are not included in the set of map IDs.
 Please see [the description of `GetDifferentialPointCloudMap.srv`](https://github.com/autowarefoundation/autoware_msgs/tree/main/autoware_map_msgs#getdifferentialpointcloudmapsrv) for details.
 
+#### Visualize differential pointcloud map in RViz (ROS 2 topic)
+
+The `differential_pointcloud_map_visualizer` node calls the differential map service and publishes the result as a PointCloud2 topic so that RViz can display it. This is useful to inspect which map cells are loaded by the differential API (e.g. for debugging or when avoiding whole-map load).
+
+- **Enable**: Launch with `enable_differential_pointcloud_map_visualizer:=true` (e.g. in `autoware_core_map.launch.xml` or tier4 `map.launch.xml`).
+- **RViz**: Add a PointCloud2 display and set the topic to `/map/differential_pointcloud_map`.
+- **Parameters**: `center_x`, `center_y`, `radius` define the queried area when `use_pose` is false. Set `use_pose: true` to use the current localization pose as center (subscribe to `input/pose`, typically remapped to `/localization/pose_estimator/pose_with_covariance`). Requires divided maps and metadata for the differential service to return data.
+
 #### Send selected pointcloud map (ROS 2 service)
 
 Here, we assume that the pointcloud maps are divided into grids.
