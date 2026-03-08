@@ -4,11 +4,24 @@ project(autoware_gyro_odometer)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(autoware_agnocast_wrapper REQUIRED)
+
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/gyro_odometer_core.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} fmt)
+
+ament_target_dependencies(${PROJECT_NAME}
+  agnocastlib
+  autoware_agnocast_wrapper
+)
+
+target_include_directories(${PROJECT_NAME}
+  PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
+)
 
 if(BUILD_TESTING)
   ament_add_ros_isolated_gtest(test_gyro_odometer
@@ -27,10 +40,11 @@ if(BUILD_TESTING)
   )
 endif()
 
-rclcpp_components_register_node(${PROJECT_NAME}
+autoware_agnocast_wrapper_setup(${PROJECT_NAME})
+
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::gyro_odometer::GyroOdometerNode"
   EXECUTABLE ${PROJECT_NAME}_node
-  EXECUTOR SingleThreadedExecutor
 )
 
 ament_auto_package(INSTALL_TO_SHARE

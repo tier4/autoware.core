@@ -129,7 +129,7 @@ TEST(GyroOdometer, TestGyroOdometerWithImuAndVelocity)
   imu_generator->imu_pub->publish(input_imu);
 
   // gyro_odometer receives IMU and velocity, and publishes the fused twist data.
-  wait_spin_some(gyro_odometer_node);
+  wait_spin_some(gyro_odometer_node->get_rclcpp_node());
 
   // validator node receives the fused twist data and store in "received_latest_twist_ptr".
   wait_spin_some(gyro_odometer_validator_node);
@@ -153,7 +153,7 @@ TEST(GyroOdometer, TestGyroOdometerImuOnly)
   imu_generator->imu_pub->publish(input_imu);
 
   // gyro_odometer receives IMU
-  wait_spin_some(gyro_odometer_node);
+  wait_spin_some(gyro_odometer_node->get_rclcpp_node());
 
   // validator node waits for the output fused twist from gyro_odometer
   wait_spin_some(gyro_odometer_validator_node);
