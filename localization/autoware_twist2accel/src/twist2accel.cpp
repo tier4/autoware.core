@@ -51,15 +51,6 @@ Twist2Accel::Twist2Accel(const rclcpp::NodeOptions & node_options)
 void Twist2Accel::callback_odometry(
   const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & msg)
 {
-  RCLCPP_INFO(get_logger(),
-    "===========================\n"
-    "[Twist2Accel] callback_odometry called\n"
-    "  use_odom: %s\n"
-    "  twist.linear.x: %f\n"
-    "===========================",
-    use_odom_ ? "true" : "false",
-    msg->twist.twist.linear.x);
-
   if (!use_odom_) return;
 
   geometry_msgs::msg::TwistStamped twist;
@@ -71,15 +62,6 @@ void Twist2Accel::callback_odometry(
 void Twist2Accel::callback_twist_with_covariance(
   const agnocast::ipc_shared_ptr<geometry_msgs::msg::TwistWithCovarianceStamped> & msg)
 {
-  RCLCPP_INFO(get_logger(),
-    "===========================\n"
-    "[Twist2Accel] callback_twist_with_covariance called\n"
-    "  use_odom: %s\n"
-    "  twist.linear.x: %f\n"
-    "===========================",
-    use_odom_ ? "true" : "false",
-    msg->twist.twist.linear.x);
-
   if (use_odom_) return;
 
   geometry_msgs::msg::TwistStamped twist;
@@ -90,13 +72,6 @@ void Twist2Accel::callback_twist_with_covariance(
 
 void Twist2Accel::estimate_accel(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
-  RCLCPP_INFO(get_logger(),
-    "===========================\n"
-    "[Twist2Accel] estimate_accel called\n"
-    "  has_prev_twist: %s\n"
-    "===========================",
-    prev_twist_ptr_ != nullptr ? "true" : "false");
-
   geometry_msgs::msg::AccelWithCovarianceStamped accel_msg;
   accel_msg.header = msg->header;
 

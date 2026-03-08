@@ -37,15 +37,6 @@ StopFilter::StopFilter(const rclcpp::NodeOptions & node_options)
 void StopFilter::callback_odometry(
   const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & msg)
 {
-  RCLCPP_INFO(get_logger(),
-    "===========================\n"
-    "[StopFilter] callback_odometry called\n"
-    "  vx: %f, wz: %f\n"
-    "  vx_threshold: %f, wz_threshold: %f\n"
-    "===========================",
-    msg->twist.twist.linear.x, msg->twist.twist.angular.z,
-    vx_threshold_, wz_threshold_);
-
   const bool is_stopped =
     std::fabs(msg->twist.twist.linear.x) < vx_threshold_ &&
     std::fabs(msg->twist.twist.angular.z) < wz_threshold_;
