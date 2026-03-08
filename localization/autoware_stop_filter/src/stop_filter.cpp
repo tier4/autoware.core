@@ -14,18 +14,14 @@
 
 #include "stop_filter.hpp"
 
-#include <rclcpp/logging.hpp>
-
-#include <algorithm>
+#include <cmath>
 #include <functional>
 #include <memory>
-#include <string>
-#include <utility>
 
 namespace autoware::stop_filter
 {
 StopFilter::StopFilter(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("stop_filter", node_options)
+: Node("stop_filter", node_options)
 {
   vx_threshold_ = declare_parameter<double>("vx_threshold");
   wz_threshold_ = declare_parameter<double>("wz_threshold");
@@ -38,25 +34,38 @@ StopFilter::StopFilter(const rclcpp::NodeOptions & node_options)
     create_publisher<autoware_internal_debug_msgs::msg::BoolStamped>("debug/stop_flag", 1);
 }
 
-void StopFilter::callback_odometry(const nav_msgs::msg::Odometry::SharedPtr msg)
+void StopFilter::callback_odometry(
+  const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & msg)
 {
-  autoware_internal_debug_msgs::msg::BoolStamped stop_flag_msg;
-  stop_flag_msg.stamp = msg->header.stamp;
-  stop_flag_msg.data = false;
+  RCLCPP_INFO(get_logger(),
+    "===========================\n"
+    "[StopFilter] callback_odometry called\n"
+    "  vx: %f, wz: %f\n"
+    "  vx_threshold: %f, wz_threshold: %f\n"
+    "===========================",
+    msg->twist.twist.linear.x, msg->twist.twist.angular.z,
+    vx_threshold_, wz_threshold_);
 
-  nav_msgs::msg::Odometry odom_msg;
-  odom_msg = *msg;
-
-  if (
+  const bool is_stopped =
     std::fabs(msg->twist.twist.linear.x) < vx_threshold_ &&
-    std::fabs(msg->twist.twist.angular.z) < wz_threshold_) {
-    odom_msg.twist.twist.linear.x = 0.0;
-    odom_msg.twist.twist.angular.z = 0.0;
-    stop_flag_msg.data = true;
+    std::fabs(msg->twist.twist.angular.z) < wz_threshold_;
+
+  {
+    auto stop_flag_msg = pub_stop_flag_->borrow_loaned_message();
+    stop_flag_msg->stamp = msg->header.stamp;
+    stop_flag_msg->data = is_stopped;
+    pub_stop_flag_->publish(std::move(stop_flag_msg));
   }
 
-  pub_stop_flag_->publish(stop_flag_msg);
-  pub_odom_->publish(odom_msg);
+  {
+    auto odom_msg = pub_odom_->borrow_loaned_message();
+    *odom_msg = *msg;
+    if (is_stopped) {
+      odom_msg->twist.twist.linear.x = 0.0;
+      odom_msg->twist.twist.angular.z = 0.0;
+    }
+    pub_odom_->publish(std::move(odom_msg));
+  }
 }
 }  // namespace autoware::stop_filter
 

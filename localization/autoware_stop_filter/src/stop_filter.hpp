@@ -15,45 +15,27 @@
 #ifndef STOP_FILTER_HPP_
 #define STOP_FILTER_HPP_
 
-#include <rclcpp/rclcpp.hpp>
-#include <tf2/LinearMath/Quaternion.hpp>
-#include <tf2/utils.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_debug_msgs/msg/bool_stamped.hpp>
-#include <geometry_msgs/msg/twist_stamped.hpp>
-#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
-
-#include <chrono>
-#include <fstream>
-#include <iostream>
-#include <memory>
-#include <mutex>
-#include <queue>
-#include <string>
-#include <vector>
 
 namespace autoware::stop_filter
 {
-class StopFilter : public rclcpp::Node
+class StopFilter : public agnocast::Node
 {
 public:
   explicit StopFilter(const rclcpp::NodeOptions & node_options);
 
 private:
-  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;  //!< @brief odom publisher
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::BoolStamped>::SharedPtr
-    pub_stop_flag_;  //!< @brief stop flag publisher
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr
-    sub_odom_;  //!< @brief measurement odometry subscriber
+  agnocast::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::BoolStamped>::SharedPtr pub_stop_flag_;
+  agnocast::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
 
-  double vx_threshold_;  //!< @brief vx threshold
-  double wz_threshold_;  //!< @brief wz threshold
+  double vx_threshold_;
+  double wz_threshold_;
 
-  /**
-   * @brief set odometry measurement
-   */
-  void callback_odometry(const nav_msgs::msg::Odometry::SharedPtr msg);
+  void callback_odometry(const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & msg);
 };
 }  // namespace autoware::stop_filter
 #endif  // STOP_FILTER_HPP_

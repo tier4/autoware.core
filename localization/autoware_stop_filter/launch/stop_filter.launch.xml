@@ -4,6 +4,7 @@
   <arg name="output_odom_name" default="stop_filter_odom"/>
   <arg name="debug_stop_flag" default="debug/stop_flag"/>
   <node pkg="autoware_stop_filter" exec="autoware_stop_filter_node" output="both">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <remap from="input/odom" to="$(var input_odom_name)"/>
 
     <remap from="output/odom" to="$(var output_odom_name)"/>
