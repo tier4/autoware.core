@@ -22,6 +22,8 @@
   <depend>nav_msgs</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>agnocastlib</depend>
+  <build_depend>agnocast_components</build_depend>
   <depend>tf2</depend>
 
   <test_depend>ament_cmake_ros</test_depend>

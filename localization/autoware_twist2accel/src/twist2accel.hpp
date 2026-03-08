@@ -17,7 +17,7 @@
 
 #include "autoware/signal_processing/lowpass_filter_1d.hpp"
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 #include <tf2/LinearMath/Quaternion.hpp>
 #include <tf2/utils.hpp>
 
@@ -39,17 +39,17 @@ using autoware::signal_processing::LowpassFilter1d;
 
 namespace autoware::twist2accel
 {
-class Twist2Accel : public rclcpp::Node
+class Twist2Accel : public agnocast::Node
 {
 public:
   explicit Twist2Accel(const rclcpp::NodeOptions & node_options);
 
 private:
-  rclcpp::Publisher<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr
+  agnocast::Publisher<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr
     pub_accel_;  //!< @brief stop flag publisher
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr
+  agnocast::Subscription<nav_msgs::msg::Odometry>::SharedPtr
     sub_odom_;  //!< @brief measurement odometry subscriber
-  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
+  agnocast::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
     sub_twist_;  //!< @brief measurement odometry subscriber
 
   geometry_msgs::msg::TwistStamped::SharedPtr prev_twist_ptr_;
@@ -66,8 +66,8 @@ private:
    * @brief set odometry measurement
    */
   void callback_twist_with_covariance(
-    const geometry_msgs::msg::TwistWithCovarianceStamped::SharedPtr msg);
-  void callback_odometry(const nav_msgs::msg::Odometry::SharedPtr msg);
+    const agnocast::ipc_shared_ptr<geometry_msgs::msg::TwistWithCovarianceStamped> & msg);
+  void callback_odometry(const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & msg);
   void estimate_accel(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
 };
 }  // namespace autoware::twist2accel

@@ -14,8 +14,6 @@
 
 #include "twist2accel.hpp"
 
-#include <rclcpp/logging.hpp>
-
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -29,7 +27,7 @@ namespace autoware::twist2accel
 using std::placeholders::_1;
 
 Twist2Accel::Twist2Accel(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("twist2accel", node_options)
+: agnocast::Node("twist2accel", node_options)
 {
   sub_odom_ = create_subscription<nav_msgs::msg::Odometry>(
     "input/odom", 1, std::bind(&Twist2Accel::callback_odometry, this, _1));
@@ -50,8 +48,18 @@ Twist2Accel::Twist2Accel(const rclcpp::NodeOptions & node_options)
   lpf_aaz_ptr_ = std::make_shared<LowpassFilter1d>(accel_lowpass_gain_);
 }
 
-void Twist2Accel::callback_odometry(const nav_msgs::msg::Odometry::SharedPtr msg)
+void Twist2Accel::callback_odometry(
+  const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & msg)
 {
+  RCLCPP_INFO(get_logger(),
+    "===========================\n"
+    "[Twist2Accel] callback_odometry called\n"
+    "  use_odom: %s\n"
+    "  twist.linear.x: %f\n"
+    "===========================",
+    use_odom_ ? "true" : "false",
+    msg->twist.twist.linear.x);
+
   if (!use_odom_) return;
 
   geometry_msgs::msg::TwistStamped twist;
@@ -61,8 +69,17 @@ void Twist2Accel::callback_odometry(const nav_msgs::msg::Odometry::SharedPtr msg
 }
 
 void Twist2Accel::callback_twist_with_covariance(
-  const geometry_msgs::msg::TwistWithCovarianceStamped::SharedPtr msg)
+  const agnocast::ipc_shared_ptr<geometry_msgs::msg::TwistWithCovarianceStamped> & msg)
 {
+  RCLCPP_INFO(get_logger(),
+    "===========================\n"
+    "[Twist2Accel] callback_twist_with_covariance called\n"
+    "  use_odom: %s\n"
+    "  twist.linear.x: %f\n"
+    "===========================",
+    use_odom_ ? "true" : "false",
+    msg->twist.twist.linear.x);
+
   if (use_odom_) return;
 
   geometry_msgs::msg::TwistStamped twist;
@@ -73,6 +90,13 @@ void Twist2Accel::callback_twist_with_covariance(
 
 void Twist2Accel::estimate_accel(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
+  RCLCPP_INFO(get_logger(),
+    "===========================\n"
+    "[Twist2Accel] estimate_accel called\n"
+    "  has_prev_twist: %s\n"
+    "===========================",
+    prev_twist_ptr_ != nullptr ? "true" : "false");
+
   geometry_msgs::msg::AccelWithCovarianceStamped accel_msg;
   accel_msg.header = msg->header;
 
@@ -104,7 +128,9 @@ void Twist2Accel::estimate_accel(const geometry_msgs::msg::TwistStamped::SharedP
     accel_msg.accel.covariance[5 * 6 + 5] = 0.05;
   }
 
-  pub_accel_->publish(accel_msg);
+  auto pub_msg = pub_accel_->borrow_loaned_message();
+  *pub_msg = accel_msg;
+  pub_accel_->publish(std::move(pub_msg));
   prev_twist_ptr_ = msg;
 }
 }  // namespace autoware::twist2accel
