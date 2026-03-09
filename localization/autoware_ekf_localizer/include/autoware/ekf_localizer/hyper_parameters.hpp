@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__EKF_LOCALIZER__HYPER_PARAMETERS_HPP_
 #define AUTOWARE__EKF_LOCALIZER__HYPER_PARAMETERS_HPP_
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <algorithm>
 #include <string>
@@ -26,7 +26,7 @@ namespace autoware::ekf_localizer
 class HyperParameters
 {
 public:
-  explicit HyperParameters(rclcpp::Node * node)
+  explicit HyperParameters(agnocast::Node * node)
   : show_debug_info(node->declare_parameter<bool>("node.show_debug_info")),
     ekf_rate(node->declare_parameter<double>("node.predict_frequency")),
     ekf_dt(1.0 / std::max(ekf_rate, 0.1)),

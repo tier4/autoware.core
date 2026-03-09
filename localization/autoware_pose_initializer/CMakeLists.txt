@@ -14,10 +14,12 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/ndt_localization_trigger_module.cpp
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+find_package(agnocast_components REQUIRED)
+
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::pose_initializer::PoseInitializer"
   EXECUTABLE ${PROJECT_NAME}_node
-  EXECUTOR MultiThreadedExecutor
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 if(BUILD_TESTING)

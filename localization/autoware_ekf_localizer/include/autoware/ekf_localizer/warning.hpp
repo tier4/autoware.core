@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__EKF_LOCALIZER__WARNING_HPP_
 #define AUTOWARE__EKF_LOCALIZER__WARNING_HPP_
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <string>
 
@@ -25,7 +25,7 @@ namespace autoware::ekf_localizer
 class Warning
 {
 public:
-  explicit Warning(rclcpp::Node * node) : node_(node) {}
+  explicit Warning(agnocast::Node * node) : node_(node) {}
 
   void warn(const std::string & message) const
   {
@@ -40,7 +40,7 @@ public:
   }
 
 private:
-  rclcpp::Node * node_;
+  agnocast::Node * node_;
 };
 
 }  // namespace autoware::ekf_localizer

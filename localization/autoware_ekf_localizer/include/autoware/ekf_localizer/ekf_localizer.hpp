@@ -20,9 +20,10 @@
 #include "autoware/ekf_localizer/hyper_parameters.hpp"
 #include "autoware/ekf_localizer/warning.hpp"
 
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
-#include <rclcpp/rclcpp.hpp>
 #include <tf2/LinearMath/Quaternion.hpp>
 #include <tf2/utils.hpp>
 
@@ -38,10 +39,6 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -52,64 +49,55 @@
 namespace autoware::ekf_localizer
 {
 
-class EKFLocalizer : public rclcpp::Node
+class EKFLocalizer : public agnocast::Node
 {
 public:
   explicit EKFLocalizer(const rclcpp::NodeOptions & options);
-
-  // This function is only used in static tools to know when timer callbacks are triggered.
-  std::chrono::nanoseconds time_until_trigger() const
-  {
-    return timer_control_->time_until_trigger();
-  }
 
 private:
   const std::shared_ptr<Warning> warning_;
 
   //!< @brief ekf estimated pose publisher
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose_;
+  agnocast::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose_;
   //!< @brief estimated ekf pose with covariance publisher
-  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_pose_cov_;
+  agnocast::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_pose_cov_;
   //!< @brief estimated ekf odometry publisher
-  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
+  agnocast::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
   //!< @brief ekf estimated twist publisher
-  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr pub_twist_;
+  agnocast::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr pub_twist_;
   //!< @brief ekf estimated twist with covariance publisher
-  rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr pub_twist_cov_;
+  agnocast::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr pub_twist_cov_;
   //!< @brief ekf estimated yaw bias publisher
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr pub_yaw_bias_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr pub_yaw_bias_;
   //!< @brief ekf estimated yaw bias publisher
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_biased_pose_;
+  agnocast::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_biased_pose_;
   //!< @brief ekf estimated yaw bias publisher
-  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_biased_pose_cov_;
+  agnocast::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_biased_pose_cov_;
   //!< @brief diagnostics publisher
-  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr pub_diag_;
+  agnocast::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr pub_diag_;
   //!< @brief processing_time publisher
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
   //!< @brief initial pose subscriber
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_initialpose_;
+  agnocast::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_initialpose_;
   //!< @brief measurement pose with covariance subscriber
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_pose_with_cov_;
+  agnocast::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_pose_with_cov_;
   //!< @brief measurement twist with covariance subscriber
-  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
+  agnocast::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
     sub_twist_with_cov_;
   //!< @brief time for ekf calculation callback
-  rclcpp::TimerBase::SharedPtr timer_control_;
+  agnocast::TimerBase::SharedPtr timer_control_;
   //!< @brief last predict time
   std::shared_ptr<const rclcpp::Time> last_predict_time_;
   //!< @brief trigger_node service
-  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr service_trigger_node_;
+  agnocast::Service<std_srvs::srv::SetBool>::SharedPtr service_trigger_node_;
 
   //!< @brief tf broadcaster
-  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_br_;
+  std::shared_ptr<agnocast::TransformBroadcaster> tf_br_;
   //!< @brief tf buffer
-  tf2_ros::Buffer tf2_buffer_;
+  agnocast::Buffer tf2_buffer_;
   //!< @brief tf listener
-  tf2_ros::TransformListener tf2_listener_;
-
-  //!< @brief logger configure module
-  std::unique_ptr<autoware_utils_logging::LoggerLevelConfigure> logger_configure_;
+  agnocast::TransformListener tf2_listener_;
 
   //!< @brief  extended kalman filter instance.
   std::unique_ptr<EKFModule> ekf_module_;
@@ -135,18 +123,20 @@ private:
   /**
    * @brief set pose with covariance measurement
    */
-  void callback_pose_with_covariance(geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
+  void callback_pose_with_covariance(
+    const agnocast::ipc_shared_ptr<geometry_msgs::msg::PoseWithCovarianceStamped> & msg);
 
   /**
    * @brief set twist with covariance measurement
    */
   void callback_twist_with_covariance(
-    geometry_msgs::msg::TwistWithCovarianceStamped::SharedPtr msg);
+    const agnocast::ipc_shared_ptr<geometry_msgs::msg::TwistWithCovarianceStamped> & msg);
 
   /**
    * @brief set initial_pose to current EKF pose
    */
-  void callback_initial_pose(geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
+  void callback_initial_pose(
+    const agnocast::ipc_shared_ptr<geometry_msgs::msg::PoseWithCovarianceStamped> & msg);
 
   /**
    * @brief update predict frequency
@@ -184,11 +174,14 @@ private:
    * @brief trigger node
    */
   void service_trigger_node(
-    const std_srvs::srv::SetBool::Request::SharedPtr req,
-    std_srvs::srv::SetBool::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<std_srvs::srv::SetBool>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<std_srvs::srv::SetBool>::ResponseT> & res);
 
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch_;
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch_timer_cb_;
+
+  std::unique_ptr<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>
+    logger_configure_;
 
   friend class EKFLocalizerTestSuite;  // for test code
 };

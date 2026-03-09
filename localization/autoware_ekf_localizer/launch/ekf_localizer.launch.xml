@@ -1,4 +1,5 @@
 <launch>
+  <arg name="agnocast_heaphook_path" default="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
   <arg name="param_file" default="$(find-pkg-share autoware_ekf_localizer)/config/ekf_localizer.param.yaml"/>
 
   <arg name="input_initial_pose_name" default="initialpose3d"/>
@@ -19,6 +20,8 @@
   <arg name="output_processing_time_ms" default="debug/processing_time_ms"/>
 
   <node pkg="autoware_ekf_localizer" exec="autoware_ekf_localizer_node" output="both">
+    <env name="LD_PRELOAD" value="$(var agnocast_heaphook_path):$(env LD_PRELOAD '')"/>
+
     <remap from="in_pose_with_covariance" to="$(var input_pose_with_cov_name)"/>
 
     <remap from="in_twist_with_covariance" to="$(var input_twist_with_cov_name)"/>

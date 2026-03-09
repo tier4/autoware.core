@@ -9,7 +9,10 @@
   <arg name="sub_gnss_pose_cov" default="sub_gnss_pose_cov"/>
   <arg name="gnss_initial_pose_auto_fix_target" default="pointcloud_map"/>
 
+  <arg name="agnocast_heaphook_path" default="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
+
   <node pkg="autoware_pose_initializer" exec="autoware_pose_initializer_node" output="both">
+    <env name="LD_PRELOAD" value="$(var agnocast_heaphook_path):$(env LD_PRELOAD '')"/>
     <param from="$(var config_file)" allow_substs="true"/>
     <remap from="yabloc_align" to="/localization/pose_estimator/yabloc/initializer/yabloc_align_srv"/>
     <remap from="ndt_align" to="/localization/pose_estimator/ndt_align_srv"/>

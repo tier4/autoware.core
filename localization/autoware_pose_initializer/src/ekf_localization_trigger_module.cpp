@@ -27,7 +27,7 @@ using Initialize = autoware::component_interface_specs::localization::Initialize
 
 EkfLocalizationTriggerModule::EkfLocalizationTriggerModule(rclcpp::Node * node) : node_(node)
 {
-  client_ekf_trigger_ = node_->create_client<SetBool>("ekf_trigger_node");
+  client_ekf_trigger_ = agnocast::create_client<SetBool>(node_, "ekf_trigger_node");
 }
 
 void EkfLocalizationTriggerModule::wait_for_service()
@@ -40,7 +40,7 @@ void EkfLocalizationTriggerModule::wait_for_service()
 
 void EkfLocalizationTriggerModule::send_request(bool flag, bool need_spin) const
 {
-  const auto req = std::make_shared<SetBool::Request>();
+  auto req = client_ekf_trigger_->borrow_loaned_request();
   std::string command_name;
   req->data = flag;
   if (flag) {
@@ -57,7 +57,7 @@ void EkfLocalizationTriggerModule::send_request(bool flag, bool need_spin) const
     throw respose_status;
   }
 
-  auto future_ekf = client_ekf_trigger_->async_send_request(req);
+  auto future_ekf = client_ekf_trigger_->async_send_request(std::move(req));
 
   if (need_spin) {
     rclcpp::spin_until_future_complete(node_->get_node_base_interface(), future_ekf);
