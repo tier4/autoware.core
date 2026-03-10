@@ -15,6 +15,7 @@
 #ifndef NDT_LOCALIZATION_TRIGGER_MODULE_HPP_
 #define NDT_LOCALIZATION_TRIGGER_MODULE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <std_srvs/srv/set_bool.hpp>
@@ -33,7 +34,7 @@ public:
 
 private:
   rclcpp::Node * node_;
-  rclcpp::Client<SetBool>::SharedPtr client_ndt_trigger_;
+  agnocast::Client<SetBool>::SharedPtr client_ndt_trigger_;
 };
 }  // namespace autoware::pose_initializer
 

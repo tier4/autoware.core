@@ -25,6 +25,8 @@
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
 #include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
+#include <agnocast/node/tf2/transform_broadcaster.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
@@ -43,9 +45,6 @@
 #include <fmt/format.h>
 #include <pcl/point_types.h>
 #include <tf2/transform_datatypes.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
 
 #ifdef ROS_DISTRO_GALACTIC
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
@@ -67,7 +66,12 @@
 namespace autoware::ndt_scan_matcher
 {
 
-class NDTScanMatcher : public rclcpp::Node
+using AgnocastDiagnosticsInterface =
+  autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>;
+using AgnocastLoggerLevelConfigure =
+  autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>;
+
+class NDTScanMatcher : public agnocast::Node
 {
   using PointSource = pcl::PointXYZ;
   using PointTarget = pcl::PointXYZ;
@@ -80,37 +84,49 @@ public:
   // This function is only used in static tools to know when timer callbacks are triggered.
   std::chrono::nanoseconds time_until_trigger() const
   {
-    return map_update_timer_->time_until_trigger();
+    // TODO(agnocast): agnocast TimerBase does not support time_until_trigger yet
+    return std::chrono::nanoseconds(0);
   }
 
 private:
   void callback_timer();
 
   void callback_initial_pose(
-    geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr initial_pose_msg_ptr);
+    const agnocast::ipc_shared_ptr<geometry_msgs::msg::PoseWithCovarianceStamped> &
+      initial_pose_msg_ptr);
   void callback_initial_pose_main(
-    const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr initial_pose_msg_ptr);
+    const agnocast::ipc_shared_ptr<geometry_msgs::msg::PoseWithCovarianceStamped> &
+      initial_pose_msg_ptr);
 
   void callback_regularization_pose(
-    geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr pose_conv_msg_ptr);
+    const agnocast::ipc_shared_ptr<geometry_msgs::msg::PoseWithCovarianceStamped> &
+      pose_conv_msg_ptr);
 
   void callback_sensor_points(
-    sensor_msgs::msg::PointCloud2::ConstSharedPtr sensor_points_msg_in_sensor_frame);
+    const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> &
+      sensor_points_msg_in_sensor_frame);
   bool callback_sensor_points_main(
-    sensor_msgs::msg::PointCloud2::ConstSharedPtr sensor_points_msg_in_sensor_frame);
+    const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> &
+      sensor_points_msg_in_sensor_frame);
 
   void service_trigger_node(
-    const std_srvs::srv::SetBool::Request::SharedPtr req,
-    std_srvs::srv::SetBool::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<std_srvs::srv::SetBool>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<std_srvs::srv::SetBool>::ResponseT> & res);
 
   void service_ndt_align(
-    const autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped::Request::SharedPtr
-      req,
-    autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<
+      agnocast::Service<
+        autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped>::RequestT> & req,
+    agnocast::ipc_shared_ptr<
+      agnocast::Service<
+        autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped>::ResponseT> & res);
   void service_ndt_align_main(
-    const autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped::Request::SharedPtr
-      req,
-    autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<
+      agnocast::Service<
+        autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped>::RequestT> & req,
+    agnocast::ipc_shared_ptr<
+      agnocast::Service<
+        autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped>::ResponseT> & res);
 
   std::tuple<geometry_msgs::msg::PoseWithCovarianceStamped, double> align_pose(
     const geometry_msgs::msg::PoseWithCovarianceStamped & initial_pose_with_cov);
@@ -148,51 +164,53 @@ private:
 
   void add_regularization_pose(const rclcpp::Time & sensor_ros_time);
 
-  rclcpp::TimerBase::SharedPtr map_update_timer_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initial_pose_sub_;
+  agnocast::TimerBase::SharedPtr map_update_timer_;
+  agnocast::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+    initial_pose_sub_;
   agnocast::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sensor_points_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+  agnocast::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
     regularization_pose_sub_;
 
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr sensor_aligned_pose_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr no_ground_points_aligned_pose_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr ndt_pose_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr sensor_aligned_pose_pub_;
+  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr no_ground_points_aligned_pose_pub_;
+  agnocast::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr ndt_pose_pub_;
+  agnocast::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
     ndt_pose_with_covariance_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+  agnocast::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
     initial_pose_with_covariance_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr multi_ndt_pose_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr multi_initial_pose_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr exe_time_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  agnocast::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr multi_ndt_pose_pub_;
+  agnocast::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr multi_initial_pose_pub_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr exe_time_pub_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
     transform_probability_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
     nearest_voxel_transformation_likelihood_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr voxel_score_points_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr voxel_score_points_pub_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
     no_ground_transform_probability_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
     no_ground_nearest_voxel_transformation_likelihood_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Int32Stamped>::SharedPtr iteration_num_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Int32Stamped>::SharedPtr
+    iteration_num_pub_;
+  agnocast::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr
     initial_to_result_relative_pose_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
     initial_to_result_distance_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
     initial_to_result_distance_old_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
     initial_to_result_distance_new_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr ndt_marker_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr ndt_marker_pub_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
     ndt_monte_carlo_initial_pose_marker_pub_;
 
-  rclcpp::Service<autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped>::SharedPtr
+  agnocast::Service<autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped>::SharedPtr
     service_;
-  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr service_trigger_node_;
+  agnocast::Service<std_srvs::srv::SetBool>::SharedPtr service_trigger_node_;
 
-  tf2_ros::TransformBroadcaster tf2_broadcaster_;
-  tf2_ros::Buffer tf2_buffer_;
-  tf2_ros::TransformListener tf2_listener_;
+  agnocast::TransformBroadcaster tf2_broadcaster_;
+  agnocast::Buffer tf2_buffer_;
+  agnocast::TransformListener tf2_listener_;
 
   rclcpp::CallbackGroup::SharedPtr timer_callback_group_;
 
@@ -210,14 +228,14 @@ private:
   std::unique_ptr<autoware::localization_util::SmartPoseBuffer> regularization_pose_buffer_;
 
   std::atomic<bool> is_activated_;
-  std::unique_ptr<DiagnosticsInterface> diagnostics_scan_points_;
-  std::unique_ptr<DiagnosticsInterface> diagnostics_initial_pose_;
-  std::unique_ptr<DiagnosticsInterface> diagnostics_regularization_pose_;
-  std::unique_ptr<DiagnosticsInterface> diagnostics_map_update_;
-  std::unique_ptr<DiagnosticsInterface> diagnostics_ndt_align_;
-  std::unique_ptr<DiagnosticsInterface> diagnostics_trigger_node_;
+  std::unique_ptr<AgnocastDiagnosticsInterface> diagnostics_scan_points_;
+  std::unique_ptr<AgnocastDiagnosticsInterface> diagnostics_initial_pose_;
+  std::unique_ptr<AgnocastDiagnosticsInterface> diagnostics_regularization_pose_;
+  std::unique_ptr<AgnocastDiagnosticsInterface> diagnostics_map_update_;
+  std::unique_ptr<AgnocastDiagnosticsInterface> diagnostics_ndt_align_;
+  std::unique_ptr<AgnocastDiagnosticsInterface> diagnostics_trigger_node_;
   std::unique_ptr<MapUpdateModule> map_update_module_;
-  std::unique_ptr<autoware_utils_logging::LoggerLevelConfigure> logger_configure_;
+  std::unique_ptr<AgnocastLoggerLevelConfigure> logger_configure_;
 
   HyperParameters param_;
 };

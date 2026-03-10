@@ -17,6 +17,7 @@
 
 #include "ndt_omp/multigrid_ndt_omp.h"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <algorithm>
@@ -106,7 +107,7 @@ struct HyperParameters
   } dynamic_map_loading{};
 
 public:
-  explicit HyperParameters(rclcpp::Node * node)
+  explicit HyperParameters(agnocast::Node * node)
   {
     frame.base_frame = node->declare_parameter<std::string>("frame.base_frame");
     frame.ndt_base_frame = node->declare_parameter<std::string>("frame.ndt_base_frame");

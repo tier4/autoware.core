@@ -21,7 +21,7 @@ namespace autoware::ndt_scan_matcher
 {
 
 MapUpdateModule::MapUpdateModule(
-  rclcpp::Node * node, std::mutex * ndt_ptr_mutex, NdtPtrType & ndt_ptr,
+  agnocast::Node * node, std::mutex * ndt_ptr_mutex, NdtPtrType & ndt_ptr,
   HyperParameters::DynamicMapLoading param)
 : ndt_ptr_(ndt_ptr),
   ndt_ptr_mutex_(ndt_ptr_mutex),
@@ -32,9 +32,8 @@ MapUpdateModule::MapUpdateModule(
   loaded_pcd_pub_ = node->create_publisher<sensor_msgs::msg::PointCloud2>(
     "debug/loaded_pointcloud_map", rclcpp::QoS{1}.transient_local());
 
-  pcd_loader_client_ =
-    agnocast::create_client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>(
-      node, "pcd_loader_service");
+  pcd_loader_client_ = node->create_client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>(
+    "pcd_loader_service");
 
   secondary_ndt_ptr_.reset(new NdtType);
 
@@ -57,7 +56,7 @@ MapUpdateModule::MapUpdateModule(
 
 void MapUpdateModule::callback_timer(
   const bool is_activated, const std::optional<geometry_msgs::msg::Point> & position,
-  std::unique_ptr<DiagnosticsInterface> & diagnostics_ptr)
+  std::unique_ptr<AgnocastDiagnosticsInterface> & diagnostics_ptr)
 {
   // check is_activated
   diagnostics_ptr->add_key_value("is_activated", is_activated);
@@ -88,7 +87,7 @@ void MapUpdateModule::callback_timer(
 
 bool MapUpdateModule::should_update_map(
   const geometry_msgs::msg::Point & position,
-  std::unique_ptr<DiagnosticsInterface> & diagnostics_ptr)
+  std::unique_ptr<AgnocastDiagnosticsInterface> & diagnostics_ptr)
 {
   last_update_position_mtx_.lock();
 
@@ -144,7 +143,7 @@ bool MapUpdateModule::out_of_map_range(const geometry_msgs::msg::Point & positio
 
 void MapUpdateModule::update_map(
   const geometry_msgs::msg::Point & position,
-  std::unique_ptr<DiagnosticsInterface> & diagnostics_ptr)
+  std::unique_ptr<AgnocastDiagnosticsInterface> & diagnostics_ptr)
 {
   diagnostics_ptr->add_key_value("is_need_rebuild", need_rebuild_);
 
@@ -232,7 +231,7 @@ void MapUpdateModule::update_map(
 
 bool MapUpdateModule::update_ndt(
   const geometry_msgs::msg::Point & position, NdtType & ndt,
-  std::unique_ptr<DiagnosticsInterface> & diagnostics_ptr)
+  std::unique_ptr<AgnocastDiagnosticsInterface> & diagnostics_ptr)
 {
   diagnostics_ptr->add_key_value("maps_size_before", ndt.getCurrentMapIDs().size());
 
@@ -243,7 +242,9 @@ bool MapUpdateModule::update_ndt(
   request->area.radius = static_cast<float>(param_.map_radius);
   request->cached_ids = ndt.getCurrentMapIDs();
 
-  while (!pcd_loader_client_->wait_for_service(std::chrono::seconds(1)) && rclcpp::ok()) {
+  // TODO(agnocast): rclcpp::ok() returns false with AgnocastOnly executors since rclcpp::init() is
+  // not called. Use true until agnocast::ok() is implemented.
+  while (!pcd_loader_client_->wait_for_service(std::chrono::seconds(1))) {
     diagnostics_ptr->add_key_value("is_succeed_call_pcd_loader", false);
 
     std::stringstream message;
@@ -261,15 +262,8 @@ bool MapUpdateModule::update_ndt(
   std::future_status status = result.future.wait_for(std::chrono::seconds(0));
   while (status != std::future_status::ready) {
     // check is_succeed_call_pcd_loader
-    if (!rclcpp::ok()) {
-      diagnostics_ptr->add_key_value("is_succeed_call_pcd_loader", false);
-
-      std::stringstream message;
-      message << "pcd_loader service is not working.";
-      diagnostics_ptr->update_level_and_message(
-        diagnostic_msgs::msg::DiagnosticStatus::WARN, message.str());
-      return false;  // No update
-    }
+    // TODO(agnocast): rclcpp::ok() returns false with AgnocastOnly executors since
+    // rclcpp::init() is not called. Skipping this check until agnocast::ok() is implemented.
     status = result.future.wait_for(std::chrono::seconds(1));
   }
   diagnostics_ptr->add_key_value("is_succeed_call_pcd_loader", true);
@@ -316,11 +310,11 @@ bool MapUpdateModule::update_ndt(
 void MapUpdateModule::publish_partial_pcd_map()
 {
   pcl::PointCloud<PointTarget> map_pcl = ndt_ptr_->getVoxelPCD();
-  sensor_msgs::msg::PointCloud2 map_msg;
-  pcl::toROSMsg(map_pcl, map_msg);
-  map_msg.header.frame_id = "map";
+  auto map_msg = loaded_pcd_pub_->borrow_loaned_message();
+  pcl::toROSMsg(map_pcl, *map_msg);
+  map_msg->header.frame_id = "map";
 
-  loaded_pcd_pub_->publish(map_msg);
+  loaded_pcd_pub_->publish(std::move(map_msg));
 }
 
 }  // namespace autoware::ndt_scan_matcher

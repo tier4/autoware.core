@@ -43,7 +43,8 @@
 
 namespace autoware::ndt_scan_matcher
 {
-using DiagnosticsInterface = autoware_utils_diagnostics::DiagnosticsInterface;
+using AgnocastDiagnosticsInterface =
+  autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>;
 
 class MapUpdateModule
 {
@@ -54,7 +55,7 @@ class MapUpdateModule
 
 public:
   MapUpdateModule(
-    rclcpp::Node * node, std::mutex * ndt_ptr_mutex, NdtPtrType & ndt_ptr,
+    agnocast::Node * node, std::mutex * ndt_ptr_mutex, NdtPtrType & ndt_ptr,
     HyperParameters::DynamicMapLoading param);
 
   bool out_of_map_range(const geometry_msgs::msg::Point & position);
@@ -64,22 +65,22 @@ private:
 
   void callback_timer(
     const bool is_activated, const std::optional<geometry_msgs::msg::Point> & position,
-    std::unique_ptr<DiagnosticsInterface> & diagnostics_ptr);
+    std::unique_ptr<AgnocastDiagnosticsInterface> & diagnostics_ptr);
 
   [[nodiscard]] bool should_update_map(
     const geometry_msgs::msg::Point & position,
-    std::unique_ptr<DiagnosticsInterface> & diagnostics_ptr);
+    std::unique_ptr<AgnocastDiagnosticsInterface> & diagnostics_ptr);
 
   void update_map(
     const geometry_msgs::msg::Point & position,
-    std::unique_ptr<DiagnosticsInterface> & diagnostics_ptr);
+    std::unique_ptr<AgnocastDiagnosticsInterface> & diagnostics_ptr);
   // Update the specified NDT
   bool update_ndt(
     const geometry_msgs::msg::Point & position, NdtType & ndt,
-    std::unique_ptr<DiagnosticsInterface> & diagnostics_ptr);
+    std::unique_ptr<AgnocastDiagnosticsInterface> & diagnostics_ptr);
   void publish_partial_pcd_map();
 
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr loaded_pcd_pub_;
+  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr loaded_pcd_pub_;
 
   agnocast::Client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedPtr
     pcd_loader_client_;

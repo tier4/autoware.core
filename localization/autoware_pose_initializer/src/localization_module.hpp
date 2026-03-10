@@ -15,6 +15,7 @@
 #ifndef LOCALIZATION_MODULE_HPP_
 #define LOCALIZATION_MODULE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_localization_msgs/srv/pose_with_covariance_stamped.hpp>
@@ -37,7 +38,7 @@ public:
 
 private:
   rclcpp::Logger logger_;
-  rclcpp::Client<RequestPoseAlignment>::SharedPtr cli_align_;
+  agnocast::Client<RequestPoseAlignment>::SharedPtr cli_align_;
 };
 }  // namespace autoware::pose_initializer
 

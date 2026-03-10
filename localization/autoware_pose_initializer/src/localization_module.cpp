@@ -28,14 +28,15 @@ using Initialize = autoware::component_interface_specs::localization::Initialize
 using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;
 
 LocalizationModule::LocalizationModule(rclcpp::Node * node, const std::string & service_name)
-: logger_(node->get_logger()), cli_align_(node->create_client<RequestPoseAlignment>(service_name))
+: logger_(node->get_logger()),
+  cli_align_(agnocast::create_client<RequestPoseAlignment>(node, service_name))
 {
 }
 
 std::tuple<PoseWithCovarianceStamped, bool> LocalizationModule::align_pose(
   const PoseWithCovarianceStamped & pose)
 {
-  const auto req = std::make_shared<RequestPoseAlignment::Request>();
+  auto req = cli_align_->borrow_loaned_request();
   req->pose_with_covariance = pose;
 
   if (!cli_align_->service_is_ready()) {
@@ -47,7 +48,7 @@ std::tuple<PoseWithCovarianceStamped, bool> LocalizationModule::align_pose(
   }
 
   RCLCPP_INFO(logger_, "Call align server.");
-  const auto res = cli_align_->async_send_request(req).get();
+  const auto res = cli_align_->async_send_request(std::move(req)).get();
   if (!res->success) {
     autoware_adapi_v1_msgs::msg::ResponseStatus respose_status;
     respose_status.success = false;
