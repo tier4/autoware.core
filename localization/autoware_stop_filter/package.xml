@@ -20,6 +20,7 @@
   <depend>nav_msgs</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>autoware_agnocast_wrapper</depend>
   <depend>tf2</depend>
 
   <test_depend>ament_cmake_ros</test_depend>

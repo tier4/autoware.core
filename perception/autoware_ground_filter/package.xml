@@ -32,6 +32,7 @@
   <depend>pcl_ros</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>autoware_agnocast_wrapper</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>tf2</depend>
