@@ -228,6 +228,7 @@ std::optional<PathWithLaneId> PathGenerator::generate_path(
   auto s_ego = lanelet::utils::getArcCoordinates({current_lanelet}, current_pose).length;
   auto s_start = s_ego - params.path_length.backward;
   auto s_end = s_ego + params.path_length.forward;
+  auto current_lanelet_seen = false;
 
   const auto & goal_lanelet = route_manager_->goal_lanelet();
   auto connect_to_goal = false;
@@ -238,6 +239,7 @@ std::optional<PathWithLaneId> PathGenerator::generate_path(
       s_ego += s;
       s_start += s;
       s_end += s;
+      current_lanelet_seen = true;
     }
     if (goal_lanelet.id() == lane_id) {
       const auto s_goal = s + autoware::experimental::lanelet2_utils::get_arc_coordinates(
@@ -250,10 +252,10 @@ std::optional<PathWithLaneId> PathGenerator::generate_path(
     }
 
     s += lanelet::geometry::length2d(*it);
-    if (s >= s_end + vehicle_info_.max_longitudinal_offset_m) {
+    if (current_lanelet_seen && s >= s_end + vehicle_info_.max_longitudinal_offset_m) {
       lanelets.erase(std::next(it), lanelets.end());
       break;
-    } else if (it == std::prev(lanelets.end())) {
+    } else if (current_lanelet_seen && it == std::prev(lanelets.end())) {
       s_end = std::min(s_end, s - vehicle_info_.max_longitudinal_offset_m);
     }
   }
