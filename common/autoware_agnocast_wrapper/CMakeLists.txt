@@ -77,4 +77,4 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-autoware_ament_auto_package()
+ament_auto_package()
