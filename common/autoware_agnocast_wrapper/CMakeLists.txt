@@ -30,7 +30,7 @@ if("$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
     agnocastlib
     autoware_utils_rclcpp
     message_filters
-    glog::glog
+    glog
   )
   target_compile_definitions(${PROJECT_NAME} PUBLIC USE_AGNOCAST_ENABLED)
 else()
@@ -38,7 +38,7 @@ else()
     rclcpp
     autoware_utils_rclcpp
     message_filters
-    glog::glog
+    glog
   )
 endif()
 
