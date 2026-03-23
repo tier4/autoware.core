@@ -55,6 +55,11 @@ ament_export_dependencies(
   glog
 )
 
+ament_export_libraries(
+  ${PROJECT_NAME}
+  glog
+)
+
 if(DEFINED ENV{ENABLE_AGNOCAST} AND "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
   ament_export_dependencies(
     agnocastlib
