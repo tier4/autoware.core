@@ -15,6 +15,7 @@
 #ifndef VEHICLE_VELOCITY_CONVERTER_HPP_
 #define VEHICLE_VELOCITY_CONVERTER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_vehicle_msgs/msg/velocity_report.hpp>
@@ -37,7 +38,7 @@ private:
 
   rclcpp::Subscription<autoware_vehicle_msgs::msg::VelocityReport>::SharedPtr vehicle_report_sub_;
 
-  rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
+  agnocast::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
     twist_with_covariance_pub_;
 
   std::string frame_id_;
