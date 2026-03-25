@@ -34,7 +34,6 @@
   <depend>grid_map_core</depend>
   <depend>libboost-dev</depend>
   <depend>pluginlib</depend>
-  <depend>agnocastlib</depend>
   <depend>rclcpp</depend>
   <depend>tf2</depend>
   <depend>visualization_msgs</depend>

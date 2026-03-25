@@ -18,8 +18,8 @@
 #include "planner_data.hpp"
 #include "velocity_planning_result.hpp"
 
-#include <agnocast/agnocast.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
+#include <autoware_utils_debug/processing_time_publisher.hpp>
 #include <autoware_utils_debug/published_time_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -40,7 +40,7 @@ class PluginModuleInterface
 {
 public:
   virtual ~PluginModuleInterface() = default;
-  virtual void init(agnocast::Node & node, const std::string & module_name) = 0;
+  virtual void init(rclcpp::Node & node, const std::string & module_name) = 0;
   virtual RequiredSubscriptionInfo getRequiredSubscriptions() const = 0;
   virtual void update_parameters(const std::vector<rclcpp::Parameter> & parameters) = 0;
   virtual VelocityPlanningResult plan(
@@ -52,9 +52,10 @@ public:
   virtual std::string get_short_module_name() const { return "module_name"; }
   virtual void publish_planning_factor() {}
   rclcpp::Logger logger_ = rclcpp::get_logger("");
-  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_publisher_;
-  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr virtual_wall_publisher_;
-  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_publisher_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr virtual_wall_publisher_;
+  std::shared_ptr<autoware_utils_debug::ProcessingTimePublisher> processing_diag_publisher_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     processing_time_publisher_;
   autoware::motion_utils::VirtualWallMarkerCreator virtual_wall_marker_creator{};
   std::vector<PlanningFactor> get_planning_factors() const
@@ -66,7 +67,7 @@ public:
   }
 
 protected:
-  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface_;
 };
 

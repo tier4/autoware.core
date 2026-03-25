@@ -59,9 +59,8 @@ public:
     resampling::ResampleParam resample_param;
   };
 
-  template <typename NodeT>
   explicit SmootherBase(
-    NodeT & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
+    rclcpp::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
   virtual ~SmootherBase() = default;
   virtual bool apply(
     const double initial_vel, const double initial_acc, const TrajectoryPoints & input,

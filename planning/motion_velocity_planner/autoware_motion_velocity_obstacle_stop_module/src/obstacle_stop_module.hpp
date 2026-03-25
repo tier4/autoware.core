@@ -28,7 +28,6 @@
 #include <autoware/objects_of_interest_marker_interface/objects_of_interest_marker_interface.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
-#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
@@ -60,7 +59,7 @@ class ObstacleStopModule : public PluginModuleInterface
   friend class ObstacleStopModuleWrapper;
 
 public:
-  void init(agnocast::Node & node, const std::string & module_name) override;
+  void init(rclcpp::Node & node, const std::string & module_name) override;
   void publish_planning_factor() override { planning_factor_interface_->publish(); };
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   std::string get_module_name() const override { return module_name_; }
@@ -93,12 +92,12 @@ private:
   PointcloudSegmentationParam pointcloud_segmentation_param_;
 
   // module publisher
-  agnocast::Publisher<Float32MultiArrayStamped>::SharedPtr debug_stop_planning_info_pub_{};
-  agnocast::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr debug_stop_planning_info_pub_{};
+  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     processing_time_detail_pub_{};
 
   // interface publisher
-  std::unique_ptr<autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>
+  std::unique_ptr<autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>
     objects_of_interest_marker_interface_{};
 
   // internal variables

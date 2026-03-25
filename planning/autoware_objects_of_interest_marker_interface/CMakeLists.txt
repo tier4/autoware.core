@@ -14,6 +14,7 @@ ament_auto_find_build_dependencies()
 
 ament_auto_add_library(autoware_objects_of_interest_marker_interface SHARED
   src/coloring.cpp
+  src/objects_of_interest_marker_interface.cpp
   src/marker_utils.cpp
 )
 

@@ -36,7 +36,6 @@
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
   <depend>libboost-dev</depend>
-  <depend>agnocastlib</depend>
   <depend>rclcpp</depend>
   <depend>visualization_msgs</depend>
 

@@ -18,7 +18,6 @@
 #include "type_alias.hpp"
 #include "types.hpp"
 
-#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/marker/marker_helper.hpp>
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -49,8 +48,7 @@ struct CommonParam
   double limit_min_jerk{};
 
   CommonParam() = default;
-  template <typename NodeT>
-  explicit CommonParam(NodeT & node)
+  explicit CommonParam(rclcpp::Node & node)
   {
     max_accel = get_or_declare_parameter<double>(node, "normal.max_acc");
     min_accel = get_or_declare_parameter<double>(node, "normal.min_acc");
@@ -70,9 +68,9 @@ struct CommonParam
 /// obstacle_stop.obstacle_filtering.car.check_inside)
 /// 3. Default parameter for the object type (e.g.,
 /// obstacle_stop.obstacle_filtering.default.check_inside)
-template <class T, typename NodeT>
+template <class T>
 T get_object_parameter(
-  NodeT & node, const std::string & ns, const std::string & object_label,
+  rclcpp::Node & node, const std::string & ns, const std::string & object_label,
   std::string suffix = "")
 {
   if (!suffix.empty()) suffix = "." + suffix;
@@ -132,8 +130,7 @@ struct ObstacleFilteringParam
   double crossing_obstacle_traj_angle_threshold{};
 
   ObstacleFilteringParam() = default;
-  template <typename NodeT>
-  explicit ObstacleFilteringParam(NodeT & node, const std::string & label_str)
+  explicit ObstacleFilteringParam(rclcpp::Node & node, const std::string & label_str)
   {
     const std::string param_prefix = "obstacle_stop.obstacle_filtering.";
 
@@ -205,8 +202,7 @@ struct PointcloudSegmentationParam
   } height_margin;
 
   PointcloudSegmentationParam() = default;
-  template <typename NodeT>
-  explicit PointcloudSegmentationParam(NodeT & node)
+  explicit PointcloudSegmentationParam(rclcpp::Node & node)
   {
     const std::string ns = "obstacle_stop.pointcloud_segmentation.";
     time_series_association.max_time_diff =
@@ -273,8 +269,7 @@ struct StopPlanningParam
   std::unordered_map<std::string, ObjectTypeSpecificParams> object_type_specific_param_map;
 
   StopPlanningParam() = default;
-  template <typename NodeT>
-  StopPlanningParam(NodeT & node, const CommonParam & common_param)
+  StopPlanningParam(rclcpp::Node & node, const CommonParam & common_param)
   {
     stop_margin = get_or_declare_parameter<double>(node, "obstacle_stop.stop_planning.stop_margin");
     terminal_stop_margin =

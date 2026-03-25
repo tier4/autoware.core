@@ -85,8 +85,7 @@ struct TrajectoryPolygonCollisionCheck
 
 struct PointcloudPreprocessParams
 {
-  template <typename NodeT>
-  explicit PointcloudPreprocessParams(NodeT & node)
+  explicit PointcloudPreprocessParams(rclcpp::Node & node)
   {
     std::string ns = "pointcloud_preprocessing.";
     {
@@ -160,8 +159,7 @@ public:
   PlannerData & operator=(const PlannerData &) = delete;
   PlannerData(PlannerData &&) = default;
   PlannerData & operator=(PlannerData &&) = default;
-  template <typename NodeT>
-  explicit PlannerData(NodeT & node);
+  explicit PlannerData(rclcpp::Node & node);
   class Object
   {
   public:
@@ -224,8 +222,7 @@ public:
   class Pointcloud
   {
   public:
-    template <typename NodeT>
-    explicit Pointcloud(NodeT & node) : preprocess_params_(node) {}
+    explicit Pointcloud(rclcpp::Node & node) : preprocess_params_(node) {}
 
     void preprocess_pointcloud(
       pcl::PointCloud<pcl::PointXYZ> && arg_pointcloud,

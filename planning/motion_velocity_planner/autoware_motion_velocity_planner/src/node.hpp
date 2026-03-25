@@ -17,13 +17,14 @@
 
 #include "planner_manager.hpp"
 
-#include <agnocast/agnocast.hpp>
-#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware/motion_velocity_planner_common/planner_data.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/published_time_publisher.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
+#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
@@ -38,6 +39,9 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <memory>
@@ -55,48 +59,50 @@ using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::Trajectory;
 using TrajectoryPoints = std::vector<autoware_planning_msgs::msg::TrajectoryPoint>;
 
-class MotionVelocityPlannerNode : public agnocast::Node
+class MotionVelocityPlannerNode : public rclcpp::Node
 {
 public:
   explicit MotionVelocityPlannerNode(const rclcpp::NodeOptions & node_options);
 
 private:
   // tf
-  agnocast::Buffer tf_buffer_;
-  std::unique_ptr<agnocast::TransformListener> tf_listener_;
+  tf2_ros::Buffer tf_buffer_;
+  tf2_ros::TransformListener tf_listener_;
 
   // subscriber
-  agnocast::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr sub_trajectory_;
+  rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr sub_trajectory_;
   agnocast::PollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr
     sub_predicted_objects_;
   agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>::SharedPtr sub_no_ground_pointcloud_;
-  agnocast::PollingSubscriber<nav_msgs::msg::Odometry>::SharedPtr sub_vehicle_odometry_;
-  agnocast::PollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr
-    sub_acceleration_;
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<nav_msgs::msg::Odometry>
+    sub_vehicle_odometry_{this, "~/input/vehicle_odometry"};
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<
+    geometry_msgs::msg::AccelWithCovarianceStamped>
+    sub_acceleration_{this, "~/input/accel"};
   agnocast::PollingSubscriber<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_occupancy_grid_;
-  agnocast::PollingSubscriber<autoware_perception_msgs::msg::TrafficLightGroupArray>::SharedPtr
-    sub_traffic_signals_;
-  agnocast::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_map_;
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<
+    autoware_perception_msgs::msg::TrafficLightGroupArray>
+    sub_traffic_signals_{this, "~/input/traffic_signals"};
+  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_map_;
 
   void on_trajectory(
-    const agnocast::ipc_shared_ptr<const autoware_planning_msgs::msg::Trajectory> &
-      input_trajectory_msg);
+    const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr input_trajectory_msg);
   std::optional<pcl::PointCloud<pcl::PointXYZ>> process_no_ground_pointcloud(
     const agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> & msg);
-  void on_lanelet_map(
-    const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::LaneletMapBin> & msg);
+  void on_lanelet_map(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg);
   void process_traffic_signals(
-    const agnocast::ipc_shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray> & msg);
+    const autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr msg);
 
   // publishers
-  agnocast::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr trajectory_pub_;
-  agnocast::Publisher<VelocityLimit>::SharedPtr velocity_limit_pub_;
-  agnocast::Publisher<VelocityLimitClearCommand>::SharedPtr clear_velocity_limit_pub_;
-  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
-  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_processed_pointcloud_pub_;
-  std::shared_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>
-    processing_time_publisher_;
-  autoware_utils_debug::BasicPublishedTimePublisher<agnocast::Node> published_time_publisher_{this};
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr trajectory_pub_;
+  rclcpp::Publisher<VelocityLimit>::SharedPtr velocity_limit_pub_;
+  rclcpp::Publisher<VelocityLimitClearCommand>::SharedPtr clear_velocity_limit_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_processed_pointcloud_pub_;
+  autoware_utils_debug::ProcessingTimePublisher processing_diag_publisher_{
+    this, "~/debug/processing_time_ms_diag"};
+  std::shared_ptr<autoware_utils_debug::DebugPublisher> processing_time_publisher_;
+  autoware_utils_debug::PublishedTimePublisher published_time_publisher_{this};
 
   //  parameters
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_callback_;
@@ -110,14 +116,13 @@ private:
   LaneletMapBin::ConstSharedPtr map_ptr_{nullptr};
   bool has_received_map_ = false;
 
-  agnocast::Service<LoadPlugin>::SharedPtr srv_load_plugin_;
-  agnocast::Service<UnloadPlugin>::SharedPtr srv_unload_plugin_;
+  rclcpp::Service<LoadPlugin>::SharedPtr srv_load_plugin_;
+  rclcpp::Service<UnloadPlugin>::SharedPtr srv_unload_plugin_;
   void on_unload_plugin(
-    const agnocast::ipc_shared_ptr<agnocast::Service<UnloadPlugin>::RequestT> & request,
-    agnocast::ipc_shared_ptr<agnocast::Service<UnloadPlugin>::ResponseT> & response);
+    const UnloadPlugin::Request::SharedPtr request,
+    const UnloadPlugin::Response::SharedPtr response);
   void on_load_plugin(
-    const agnocast::ipc_shared_ptr<agnocast::Service<LoadPlugin>::RequestT> & request,
-    agnocast::ipc_shared_ptr<agnocast::Service<LoadPlugin>::ResponseT> & response);
+    const LoadPlugin::Request::SharedPtr request, const LoadPlugin::Response::SharedPtr response);
   rcl_interfaces::msg::SetParametersResult on_set_param(
     const std::vector<rclcpp::Parameter> & parameters);
 
@@ -143,8 +148,7 @@ private:
     const autoware::motion_velocity_planner::TrajectoryPoints & input_trajectory_points,
     std::map<std::string, double> & processing_times);
 
-  std::unique_ptr<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>
-    logger_configure_;
+  std::unique_ptr<autoware_utils_logging::LoggerLevelConfigure> logger_configure_;
 };
 }  // namespace autoware::motion_velocity_planner
 

@@ -14,8 +14,6 @@
 
 #include "autoware/velocity_smoother/smoother/analytical_jerk_constrained_smoother/analytical_jerk_constrained_smoother.hpp"
 
-#include <agnocast/agnocast.hpp>
-
 #include "autoware/motion_utils/resample/resample.hpp"
 #include "autoware/motion_utils/trajectory/conversion.hpp"
 #include "autoware/velocity_smoother/trajectory_utils.hpp"
@@ -71,30 +69,29 @@ bool applyMaxVelocity(
 
 namespace autoware::velocity_smoother
 {
-template <typename NodeT>
 AnalyticalJerkConstrainedSmoother::AnalyticalJerkConstrainedSmoother(
-  NodeT & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
+  rclcpp::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 : SmootherBase(node, time_keeper)
 {
   auto & p = smoother_param_;
-  p.resample.ds_resample = node.template declare_parameter<double>("resample.ds_resample");
-  p.resample.num_resample = node.template declare_parameter<int>("resample.num_resample");
-  p.resample.delta_yaw_threshold = node.template declare_parameter<double>("resample.delta_yaw_threshold");
+  p.resample.ds_resample = node.declare_parameter<double>("resample.ds_resample");
+  p.resample.num_resample = node.declare_parameter<int>("resample.num_resample");
+  p.resample.delta_yaw_threshold = node.declare_parameter<double>("resample.delta_yaw_threshold");
   p.latacc.enable_constant_velocity_while_turning =
-    node.template declare_parameter<bool>("latacc.enable_constant_velocity_while_turning");
+    node.declare_parameter<bool>("latacc.enable_constant_velocity_while_turning");
   p.latacc.constant_velocity_dist_threshold =
-    node.template declare_parameter<double>("latacc.constant_velocity_dist_threshold");
-  p.forward.max_acc = node.template declare_parameter<double>("forward.max_acc");
-  p.forward.min_acc = node.template declare_parameter<double>("forward.min_acc");
-  p.forward.max_jerk = node.template declare_parameter<double>("forward.max_jerk");
-  p.forward.min_jerk = node.template declare_parameter<double>("forward.min_jerk");
-  p.forward.kp = node.template declare_parameter<double>("forward.kp");
-  p.backward.start_jerk = node.template declare_parameter<double>("backward.start_jerk");
-  p.backward.min_jerk_mild_stop = node.template declare_parameter<double>("backward.min_jerk_mild_stop");
-  p.backward.min_jerk = node.template declare_parameter<double>("backward.min_jerk");
-  p.backward.min_acc_mild_stop = node.template declare_parameter<double>("backward.min_acc_mild_stop");
-  p.backward.min_acc = node.template declare_parameter<double>("backward.min_acc");
-  p.backward.span_jerk = node.template declare_parameter<double>("backward.span_jerk");
+    node.declare_parameter<double>("latacc.constant_velocity_dist_threshold");
+  p.forward.max_acc = node.declare_parameter<double>("forward.max_acc");
+  p.forward.min_acc = node.declare_parameter<double>("forward.min_acc");
+  p.forward.max_jerk = node.declare_parameter<double>("forward.max_jerk");
+  p.forward.min_jerk = node.declare_parameter<double>("forward.min_jerk");
+  p.forward.kp = node.declare_parameter<double>("forward.kp");
+  p.backward.start_jerk = node.declare_parameter<double>("backward.start_jerk");
+  p.backward.min_jerk_mild_stop = node.declare_parameter<double>("backward.min_jerk_mild_stop");
+  p.backward.min_jerk = node.declare_parameter<double>("backward.min_jerk");
+  p.backward.min_acc_mild_stop = node.declare_parameter<double>("backward.min_acc_mild_stop");
+  p.backward.min_acc = node.declare_parameter<double>("backward.min_acc");
+  p.backward.span_jerk = node.declare_parameter<double>("backward.span_jerk");
 }
 
 void AnalyticalJerkConstrainedSmoother::setParam(const Param & smoother_param)
@@ -668,10 +665,5 @@ std::string AnalyticalJerkConstrainedSmoother::strStartIndices(
   }
   return ss.str();
 }
-
-template AnalyticalJerkConstrainedSmoother::AnalyticalJerkConstrainedSmoother(
-  rclcpp::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
-template AnalyticalJerkConstrainedSmoother::AnalyticalJerkConstrainedSmoother(
-  agnocast::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
 
 }  // namespace autoware::velocity_smoother

@@ -31,7 +31,7 @@ MotionVelocityPlannerManager::MotionVelocityPlannerManager()
 {
 }
 
-void MotionVelocityPlannerManager::load_module_plugin(agnocast::Node & node, const std::string & name)
+void MotionVelocityPlannerManager::load_module_plugin(rclcpp::Node & node, const std::string & name)
 {
   // Check if the plugin is already loaded.
   if (plugin_loader_.isClassLoaded(name)) {
@@ -55,7 +55,7 @@ void MotionVelocityPlannerManager::load_module_plugin(agnocast::Node & node, con
 }
 
 void MotionVelocityPlannerManager::unload_module_plugin(
-  agnocast::Node & node, const std::string & name)
+  rclcpp::Node & node, const std::string & name)
 {
   auto it = std::remove_if(loaded_plugins_.begin(), loaded_plugins_.end(), [&](const auto plugin) {
     return plugin->get_module_name() == name;
@@ -81,7 +81,7 @@ std::vector<VelocityPlanningResult> MotionVelocityPlannerManager::plan_velocitie
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & raw_trajectory_points,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & smoothed_trajectory_points,
   const std::shared_ptr<const PlannerData> planner_data,
-  std::shared_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>> & processing_time_publisher)
+  std::shared_ptr<autoware_utils_debug::DebugPublisher> & processing_time_publisher)
 {
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch;
   std::vector<VelocityPlanningResult> results;
