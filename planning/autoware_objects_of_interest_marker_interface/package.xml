@@ -20,6 +20,7 @@
   <depend>autoware_utils_math</depend>
   <depend>autoware_utils_visualization</depend>
   <depend>geometry_msgs</depend>
+  <depend>agnocastlib</depend>
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
   <depend>visualization_msgs</depend>

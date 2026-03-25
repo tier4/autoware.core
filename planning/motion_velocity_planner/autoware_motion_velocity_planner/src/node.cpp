@@ -14,6 +14,7 @@
 
 #include "node.hpp"
 
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/velocity_smoother/smoother/analytical_jerk_constrained_smoother/analytical_jerk_constrained_smoother.hpp>
@@ -41,50 +42,45 @@
 #include <utility>
 #include <vector>
 
-namespace
-{
-rclcpp::SubscriptionOptions create_subscription_options(rclcpp::Node * node_ptr)
-{
-  rclcpp::CallbackGroup::SharedPtr callback_group =
-    node_ptr->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-
-  auto sub_opt = rclcpp::SubscriptionOptions();
-  sub_opt.callback_group = callback_group;
-
-  return sub_opt;
-}
-}  // namespace
-
 namespace autoware::motion_velocity_planner
 {
 MotionVelocityPlannerNode::MotionVelocityPlannerNode(const rclcpp::NodeOptions & node_options)
-: Node("motion_velocity_planner", node_options),
+: agnocast::Node("motion_velocity_planner", node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_),
-  planner_data_(std::make_shared<PlannerData>(*this))
+  planner_data_(std::make_shared<PlannerData>(static_cast<agnocast::Node &>(*this)))
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
 
+  // TF
+  tf_listener_ = std::make_unique<agnocast::TransformListener>(tf_buffer_, *this);
+
   // Agnocast polling subscribers
   sub_no_ground_pointcloud_ =
-    std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
-      this, "~/input/no_ground_pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos());
+    this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      "~/input/no_ground_pointcloud", rclcpp::SensorDataQoS().keep_last(1));
   sub_predicted_objects_ =
-    std::make_shared<agnocast::PollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>>(
-      this, "~/input/dynamic_objects");
+    this->create_subscription<autoware_perception_msgs::msg::PredictedObjects>(
+      "~/input/dynamic_objects", 1);
   sub_occupancy_grid_ =
-    std::make_shared<agnocast::PollingSubscriber<nav_msgs::msg::OccupancyGrid>>(
-      this, "~/input/occupancy_grid");
+    this->create_subscription<nav_msgs::msg::OccupancyGrid>(
+      "~/input/occupancy_grid", 1);
+  sub_vehicle_odometry_ =
+    this->create_subscription<nav_msgs::msg::Odometry>(
+      "~/input/vehicle_odometry", 1);
+  sub_acceleration_ =
+    this->create_subscription<geometry_msgs::msg::AccelWithCovarianceStamped>(
+      "~/input/accel", 1);
+  sub_traffic_signals_ =
+    this->create_subscription<autoware_perception_msgs::msg::TrafficLightGroupArray>(
+      "~/input/traffic_signals", 1);
 
-  // Subscribers
+  // Subscribers with callback
   sub_trajectory_ = this->create_subscription<autoware_planning_msgs::msg::Trajectory>(
-    "~/input/trajectory", 1, std::bind(&MotionVelocityPlannerNode::on_trajectory, this, _1),
-    create_subscription_options(this));
+    "~/input/trajectory", 1, std::bind(&MotionVelocityPlannerNode::on_trajectory, this, _1));
   sub_lanelet_map_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "~/input/vector_map", rclcpp::QoS(10).transient_local(),
-    std::bind(&MotionVelocityPlannerNode::on_lanelet_map, this, _1),
-    create_subscription_options(this));
+    std::bind(&MotionVelocityPlannerNode::on_lanelet_map, this, _1));
 
   srv_load_plugin_ = create_service<LoadPlugin>(
     "~/service/load_plugin", std::bind(&MotionVelocityPlannerNode::on_load_plugin, this, _1, _2));
@@ -100,7 +96,7 @@ MotionVelocityPlannerNode::MotionVelocityPlannerNode(const rclcpp::NodeOptions &
   clear_velocity_limit_pub_ = this->create_publisher<VelocityLimitClearCommand>(
     "~/output/clear_velocity_limit", rclcpp::QoS{1}.transient_local());
   processing_time_publisher_ =
-    std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+    std::make_shared<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(this, "~/debug");
   debug_viz_pub_ =
     this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/markers", 1);
   debug_processed_pointcloud_pub_ =
@@ -124,20 +120,21 @@ MotionVelocityPlannerNode::MotionVelocityPlannerNode(const rclcpp::NodeOptions &
   set_param_callback_ = this->add_on_set_parameters_callback(
     std::bind(&MotionVelocityPlannerNode::on_set_param, this, std::placeholders::_1));
 
-  logger_configure_ = std::make_unique<autoware_utils_logging::LoggerLevelConfigure>(this);
+  logger_configure_ =
+    std::make_unique<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>(this);
 }
 
 void MotionVelocityPlannerNode::on_load_plugin(
-  const LoadPlugin::Request::SharedPtr request,
-  [[maybe_unused]] const LoadPlugin::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<agnocast::Service<LoadPlugin>::RequestT> & request,
+  [[maybe_unused]] agnocast::ipc_shared_ptr<agnocast::Service<LoadPlugin>::ResponseT> & response)
 {
   std::unique_lock<std::mutex> lk(mutex_);
   planner_manager_.load_module_plugin(*this, request->plugin_name);
 }
 
 void MotionVelocityPlannerNode::on_unload_plugin(
-  const UnloadPlugin::Request::SharedPtr request,
-  [[maybe_unused]] const UnloadPlugin::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<agnocast::Service<UnloadPlugin>::RequestT> & request,
+  [[maybe_unused]] agnocast::ipc_shared_ptr<agnocast::Service<UnloadPlugin>::ResponseT> & response)
 {
   std::unique_lock<std::mutex> lk(mutex_);
   planner_manager_.unload_module_plugin(*this, request->plugin_name);
@@ -167,12 +164,12 @@ bool MotionVelocityPlannerNode::update_planner_data(
   const auto required_subscriptions = planner_manager_.getRequiredSubscriptions();
 
   autoware_utils_system::StopWatch<std::chrono::milliseconds> sw;
-  const auto ego_state_ptr = sub_vehicle_odometry_.take_data();
+  const auto ego_state_ptr = sub_vehicle_odometry_->take_data();
   if (check_with_log(ego_state_ptr, "Waiting for current odometry"))
     planner_data_->current_odometry = *ego_state_ptr;
   processing_times["update_planner_data.odom"] = sw.toc(true);
 
-  const auto ego_accel_ptr = sub_acceleration_.take_data();
+  const auto ego_accel_ptr = sub_acceleration_->take_data();
   if (check_with_log(ego_accel_ptr, "Waiting for current acceleration"))
     planner_data_->current_acceleration = *ego_accel_ptr;
   processing_times["update_planner_data.accel"] = sw.toc(true);
@@ -229,7 +226,7 @@ bool MotionVelocityPlannerNode::update_planner_data(
   processing_times["update_planner_data.is_driving_forward"] = sw.toc(true);
 
   // optional data
-  const auto traffic_signals_ptr = sub_traffic_signals_.take_data();
+  const auto traffic_signals_ptr = sub_traffic_signals_->take_data();
   // NOTE: required_subscriptions.traffic_signals is not used since is_ready is not updated here.
   if (traffic_signals_ptr) process_traffic_signals(traffic_signals_ptr);
   processing_times["update_planner_data.traffic_lights"] = sw.toc(true);
@@ -246,11 +243,11 @@ MotionVelocityPlannerNode::process_no_ground_pointcloud(
                                  rclcpp::Duration::from_seconds(1.0);
 
   if (
-    is_pcl_time_valid && tf_buffer_.canTransform("map", msg->header.frame_id, msg->header.stamp)) {
-    transform = tf_buffer_.lookupTransform(
-      "map", msg->header.frame_id, msg->header.stamp, rclcpp::Duration::from_seconds(0.05));
-  } else if (tf_buffer_.canTransform("map", msg->header.frame_id, tf2::TimePointZero)) {
-    transform = tf_buffer_.lookupTransform("map", msg->header.frame_id, tf2::TimePointZero);
+    is_pcl_time_valid &&
+    tf_buffer_.canTransform("map", msg->header.frame_id, msg->header.stamp)) {
+    transform = tf_buffer_.lookupTransform("map", msg->header.frame_id, msg->header.stamp);
+  } else if (tf_buffer_.canTransform("map", msg->header.frame_id, rclcpp::Time(0))) {
+    transform = tf_buffer_.lookupTransform("map", msg->header.frame_id, rclcpp::Time(0));
     RCLCPP_DEBUG(get_logger(), "pcl time is invalid, using tf2::TimePointZero");
   } else {
     RCLCPP_WARN(get_logger(), "no transform found for no_ground_pointcloud");
@@ -273,20 +270,21 @@ MotionVelocityPlannerNode::process_no_ground_pointcloud(
 void MotionVelocityPlannerNode::set_velocity_smoother_params()
 {
   planner_data_->velocity_smoother_ =
-    std::make_shared<autoware::velocity_smoother::AnalyticalJerkConstrainedSmoother>(*this);
+    std::make_shared<autoware::velocity_smoother::AnalyticalJerkConstrainedSmoother>(
+      static_cast<agnocast::Node &>(*this));
 }
 
 void MotionVelocityPlannerNode::on_lanelet_map(
-  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::LaneletMapBin> & msg)
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  map_ptr_ = msg;
+  map_ptr_ = std::make_shared<autoware_map_msgs::msg::LaneletMapBin>(*msg);
   has_received_map_ = true;
 }
 
 void MotionVelocityPlannerNode::process_traffic_signals(
-  const autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray> & msg)
 {
   // clear previous observation
   planner_data_->traffic_light_id_map_raw_.clear();
@@ -321,7 +319,8 @@ void MotionVelocityPlannerNode::process_traffic_signals(
 }
 
 void MotionVelocityPlannerNode::on_trajectory(
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr input_trajectory_msg)
+  const agnocast::ipc_shared_ptr<const autoware_planning_msgs::msg::Trajectory> &
+    input_trajectory_msg)
 {
   std::unique_lock<std::mutex> lk(mutex_);
 
@@ -353,23 +352,27 @@ void MotionVelocityPlannerNode::on_trajectory(
 
   lk.unlock();
 
-  trajectory_pub_->publish(output_trajectory_msg);
+  {
+    auto loaned = trajectory_pub_->borrow_loaned_message();
+    *loaned = output_trajectory_msg;
+    trajectory_pub_->publish(std::move(loaned));
+  }
 
   if (
-    debug_processed_pointcloud_pub_->get_subscription_count() > 0 &&
     planner_data_->no_ground_pointcloud.preprocess_params_.downsample_by_voxel_grid
       .enable_downsample) {
     sensor_msgs::msg::PointCloud2 output_pointcloud_msg;
     pcl::toROSMsg(
       planner_data_->no_ground_pointcloud.extract_clustered_points(), output_pointcloud_msg);
-    debug_processed_pointcloud_pub_->publish(output_pointcloud_msg);
+    auto loaned = debug_processed_pointcloud_pub_->borrow_loaned_message();
+    *loaned = output_pointcloud_msg;
+    debug_processed_pointcloud_pub_->publish(std::move(loaned));
     processing_times["publish_down_sampled_pointcloud"] = stop_watch.toc(true);
   }
 
   published_time_publisher_.publish_if_subscribed(
     trajectory_pub_, output_trajectory_msg.header.stamp);
   processing_times["Total"] = stop_watch.toc("Total");
-  processing_diag_publisher_.publish(processing_times);
 
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "processing_time_ms", processing_times["Total"]);
@@ -504,10 +507,14 @@ autoware_planning_msgs::msg::Trajectory MotionVelocityPlannerNode::generate_traj
     for (const auto & slowdown_interval : planning_result.slowdown_intervals)
       insert_slowdown(output_trajectory_msg, slowdown_interval);
     if (planning_result.velocity_limit) {
-      velocity_limit_pub_->publish(*planning_result.velocity_limit);
+      auto loaned = velocity_limit_pub_->borrow_loaned_message();
+      *loaned = *planning_result.velocity_limit;
+      velocity_limit_pub_->publish(std::move(loaned));
     }
     if (planning_result.velocity_limit_clear_command) {
-      clear_velocity_limit_pub_->publish(*planning_result.velocity_limit_clear_command);
+      auto loaned = clear_velocity_limit_pub_->borrow_loaned_message();
+      *loaned = *planning_result.velocity_limit_clear_command;
+      clear_velocity_limit_pub_->publish(std::move(loaned));
     }
   }
 

@@ -14,6 +14,8 @@
 
 #include "autoware/motion_velocity_planner_common/planner_data.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include "autoware/motion_velocity_planner_common/polygon_utils.hpp"
 #include "autoware/motion_velocity_planner_common/utils.hpp"
 #include "autoware/object_recognition_utils/predicted_path_utils.hpp"
@@ -221,9 +223,10 @@ std::vector<pcl::PointIndices> make_individual_cluster_indices(
   return ret_clusters;
 }  // namespace autoware::motion_velocity_planner
 
-PlannerData::PlannerData(rclcpp::Node & node)
+template <typename NodeT>
+PlannerData::PlannerData(NodeT & node)
 : no_ground_pointcloud(node),
-  vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo())
+  vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<NodeT>(node).getVehicleInfo())
 
 {
   // nearest search
@@ -482,5 +485,8 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
   }
   return std::make_pair(ret_pointcloud_ptr, ret_clusters);
 }
+
+template PlannerData::PlannerData(rclcpp::Node & node);
+template PlannerData::PlannerData(agnocast::Node & node);
 
 }  // namespace autoware::motion_velocity_planner

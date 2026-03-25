@@ -18,6 +18,7 @@
 #include "autoware/objects_of_interest_marker_interface/marker_data.hpp"
 #include "autoware/objects_of_interest_marker_interface/marker_utils.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
@@ -30,66 +31,101 @@
 
 namespace autoware::objects_of_interest_marker_interface
 {
-class ObjectsOfInterestMarkerInterface
-{
-public:
-  /**
-   * @brief Constructor
-   * @param node Node that publishes marker
-   * @param name Module name
-   */
-  ObjectsOfInterestMarkerInterface(rclcpp::Node * node, const std::string & name);
 
-  /**
-   * @brief Insert object data to visualize
-   * @param pose Object pose
-   * @param shape Object shape
-   * @param color_name Color name
-   */
+// Publisher traits for node type dispatch
+template <typename NodeT>
+struct ObjectsOfInterestPublisherTraits
+{
+  using MarkerPublisherPtr =
+    typename rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr;
+  static constexpr bool is_agnocast = false;
+};
+
+template <>
+struct ObjectsOfInterestPublisherTraits<agnocast::Node>
+{
+  using MarkerPublisherPtr =
+    typename agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr;
+  static constexpr bool is_agnocast = true;
+};
+
+template <typename NodeT = rclcpp::Node>
+class ObjectsOfInterestMarkerInterfaceTemplate
+{
+  using Traits = ObjectsOfInterestPublisherTraits<NodeT>;
+
+public:
+  ObjectsOfInterestMarkerInterfaceTemplate(NodeT * node, const std::string & name)
+  : name_{name}
+  {
+    pub_marker_ = node->template create_publisher<visualization_msgs::msg::MarkerArray>(
+      topic_namespace_ + "/" + name, 1);
+  }
+
   void insertObjectData(
     const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape,
-    const ColorName & color_name);
+    const ColorName & color_name)
+  {
+    insertObjectDataWithCustomColor(pose, shape, getColor(color_name));
+  }
 
-  /**
-   * @brief Insert object data to visualize with custom color data
-   * @param pose Object pose
-   * @param shape Object shape
-   * @param color Color data with alpha
-   */
   void insertObjectDataWithCustomColor(
     const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape,
-    const std_msgs::msg::ColorRGBA & color);
+    const std_msgs::msg::ColorRGBA & color)
+  {
+    ObjectMarkerData data;
+    data.pose = pose;
+    data.shape = shape;
+    data.color = color;
+    obj_marker_data_array_.push_back(data);
+  }
 
-  /**
-   * @brief Publish interest objects marker
-   */
-  void publishMarkerArray();
+  void publishMarkerArray()
+  {
+    if (pub_marker_->get_subscription_count() == 0) {
+      return;
+    }
+    visualization_msgs::msg::MarkerArray marker_array;
+    for (size_t i = 0; i < obj_marker_data_array_.size(); ++i) {
+      const auto data = obj_marker_data_array_.at(i);
+      const visualization_msgs::msg::MarkerArray target_marker =
+        marker_utils::createTargetMarker(i, data, getName(), getHeightOffset());
+      marker_array.markers.insert(
+        marker_array.markers.end(), target_marker.markers.begin(), target_marker.markers.end());
+    }
+    if constexpr (Traits::is_agnocast) {
+      auto loaned = pub_marker_->borrow_loaned_message();
+      *loaned = marker_array;
+      pub_marker_->publish(std::move(loaned));
+    } else {
+      pub_marker_->publish(marker_array);
+    }
+    obj_marker_data_array_.clear();
+  }
 
-  /**
-   * @brief Set height offset of markers
-   * @param offset Height offset of markers
-   */
-  void setHeightOffset(const double offset);
+  void setHeightOffset(const double offset) { height_offset_ = offset; }
 
-  /**
-   * @brief Get color data from color name
-   * @param color_name Color name
-   * @param alpha Alpha
-   */
-  static std_msgs::msg::ColorRGBA getColor(const ColorName & color_name, const float alpha = 0.99f);
+  static std_msgs::msg::ColorRGBA getColor(const ColorName & color_name, const float alpha = 0.99f)
+  {
+    switch (color_name) {
+      case ColorName::GRAY:
+        return coloring::getGray(alpha);
+      case ColorName::GREEN:
+        return coloring::getGreen(alpha);
+      case ColorName::AMBER:
+        return coloring::getAmber(alpha);
+      case ColorName::RED:
+        return coloring::getRed(alpha);
+      default:
+        return coloring::getGray(alpha);
+    }
+  }
 
-  /**
-   * @brief Get module name including this interface
-   */
   std::string getName() const { return name_; }
-
-  /**
-   * @brief Get height offset
-   */
   double getHeightOffset() const { return height_offset_; }
 
 private:
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_marker_;
+  typename Traits::MarkerPublisherPtr pub_marker_;
 
   double height_offset_{0.5};
   std::vector<ObjectMarkerData> obj_marker_data_array_;
@@ -97,6 +133,8 @@ private:
   std::string name_;
   std::string topic_namespace_ = "/planning/debug/objects_of_interest";
 };
+
+using ObjectsOfInterestMarkerInterface = ObjectsOfInterestMarkerInterfaceTemplate<rclcpp::Node>;
 
 }  // namespace autoware::objects_of_interest_marker_interface
 
