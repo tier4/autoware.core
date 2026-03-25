@@ -16,6 +16,7 @@
 #define AUTOWARE__PLANNING_FACTOR_INTERFACE__PLANNING_FACTOR_INTERFACE_HPP_
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/control_point.hpp>
@@ -40,15 +41,34 @@ using autoware_internal_planning_msgs::msg::PlanningFactorArray;
 using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using geometry_msgs::msg::Pose;
 
-class PlanningFactorInterface
+// Publisher traits for node type dispatch
+template <typename NodeT>
+struct PlanningFactorPublisherTraits
 {
+  using PublisherPtr = typename rclcpp::Publisher<PlanningFactorArray>::SharedPtr;
+  static constexpr bool is_agnocast = false;
+};
+
+template <>
+struct PlanningFactorPublisherTraits<agnocast::Node>
+{
+  using PublisherPtr = typename agnocast::Publisher<PlanningFactorArray>::SharedPtr;
+  static constexpr bool is_agnocast = true;
+};
+
+template <typename NodeT = rclcpp::Node>
+class PlanningFactorInterfaceTemplate
+{
+  using Traits = PlanningFactorPublisherTraits<NodeT>;
+
 public:
-  PlanningFactorInterface(
-    rclcpp::Node * node, const std::string & name, bool enable_console_output = false,
+  PlanningFactorInterfaceTemplate(
+    NodeT * node, const std::string & name, bool enable_console_output = false,
     int throttle_duration_ms = 1000)
   : name_{name},
     pub_factors_{
-      node->create_publisher<PlanningFactorArray>("/planning/planning_factors/" + name, 1)},
+      node->template create_publisher<PlanningFactorArray>(
+        "/planning/planning_factors/" + name, 1)},
     clock_{node->get_clock()},
     enable_console_output_{enable_console_output},
     throttle_duration_ms_{throttle_duration_ms}
@@ -57,16 +77,6 @@ public:
 
   /**
    * @brief factor setter for single control point.
-   *
-   * @param path points.
-   * @param ego current pose.
-   * @param control point pose. (e.g. stop or slow down point pose)
-   * @param behavior of this planning factor.
-   * @param safety factor.
-   * @param driving direction.
-   * @param target velocity of the control point.
-   * @param shift length of the control point.
-   * @param detail information.
    */
   template <class PointType>
   void add(
@@ -84,19 +94,6 @@ public:
 
   /**
    * @brief factor setter for two control points (section).
-   *
-   * @param path points.
-   * @param ego current pose.
-   * @param control section start pose. (e.g. lane change start point pose)
-   * @param control section end pose. (e.g. lane change end point pose)
-   * @param behavior of this planning factor.
-   * @param safety factor.
-   * @param driving direction.
-   * @param target velocity of the 1st control point.
-   * @param target velocity of the 2nd control point.
-   * @param shift length of the 1st control point.
-   * @param shift length of the 2nd control point.
-   * @param detail information.
    */
   template <class PointType>
   void add(
@@ -117,16 +114,7 @@ public:
   }
 
   /**
-   * @brief factor setter for single control point.
-   *
-   * @param distance to control point.
-   * @param control point pose. (e.g. stop point pose)
-   * @param behavior of this planning factor.
-   * @param safety factor.
-   * @param driving direction.
-   * @param target velocity of the control point.
-   * @param shift length of the control point.
-   * @param detail information.
+   * @brief factor setter for single control point (by distance).
    */
   void add(
     const double distance, const Pose & control_point_pose, const uint16_t behavior,
@@ -151,20 +139,7 @@ public:
   }
 
   /**
-   * @brief factor setter for two control points (section).
-   *
-   * @param distance to control section start point.
-   * @param distance to control section end point.
-   * @param control section start pose. (e.g. lane change start point pose)
-   * @param control section end pose. (e.g. lane change end point pose)
-   * @param behavior of this planning factor.
-   * @param safety factor.
-   * @param driving direction.
-   * @param target velocity of the 1st control point.
-   * @param target velocity of the 2nd control point.
-   * @param shift length of the 1st control point.
-   * @param shift length of the 2nd control point.
-   * @param detail information.
+   * @brief factor setter for two control points (section, by distance).
    */
   void add(
     const double start_distance, const double end_distance, const Pose & start_pose,
@@ -206,7 +181,13 @@ public:
     msg.header.stamp = clock_->now();
     msg.factors = factors_;
 
-    pub_factors_->publish(msg);
+    if constexpr (Traits::is_agnocast) {
+      auto loaned = pub_factors_->borrow_loaned_message();
+      *loaned = msg;
+      pub_factors_->publish(std::move(loaned));
+    } else {
+      pub_factors_->publish(msg);
+    }
 
     if (enable_console_output_ && !factors_.empty()) {
       print_factors_to_console(msg);
@@ -221,10 +202,6 @@ public:
   std::vector<PlanningFactor> get_factors() const { return factors_; }
 
 private:
-  /**
-   * @brief Print message to console in YAML format
-   * @param msg The message to print
-   */
   void print_factors_to_console(const PlanningFactorArray & msg)
   {
     const std::string output_str =
@@ -239,7 +216,7 @@ private:
 
   std::string name_;
 
-  rclcpp::Publisher<PlanningFactorArray>::SharedPtr pub_factors_;
+  typename Traits::PublisherPtr pub_factors_;
 
   rclcpp::Clock::SharedPtr clock_;
 
@@ -248,6 +225,9 @@ private:
   bool enable_console_output_{false};
   int throttle_duration_ms_{0};
 };
+
+// Backward compatibility alias
+using PlanningFactorInterface = PlanningFactorInterfaceTemplate<rclcpp::Node>;
 
 extern template void
 PlanningFactorInterface::add<autoware_internal_planning_msgs::msg::PathPointWithLaneId>(

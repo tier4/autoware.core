@@ -33,6 +33,7 @@
   <depend>builtin_interfaces</depend>
   <depend>geometry_msgs</depend>
   <depend>libboost-dev</depend>
+  <depend>agnocastlib</depend>
   <depend>rclcpp</depend>
   <depend>tf2</depend>
   <depend>tf2_geometry_msgs</depend>

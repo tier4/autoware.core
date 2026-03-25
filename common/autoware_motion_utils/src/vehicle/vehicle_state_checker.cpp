@@ -14,18 +14,8 @@
 
 #include "autoware/motion_utils/vehicle/vehicle_state_checker.hpp"
 
-#include "autoware/motion_utils/trajectory/trajectory.hpp"
-
-#include <string>
-
 namespace autoware::motion_utils
 {
-VehicleStopCheckerBase::VehicleStopCheckerBase(rclcpp::Node * node, double buffer_duration)
-: clock_(node->get_clock()), logger_(node->get_logger())
-{
-  buffer_duration_ = buffer_duration;
-}
-
 void VehicleStopCheckerBase::addTwist(const TwistStamped & twist)
 {
   twist_buffer_.push_front(twist);
@@ -78,58 +68,8 @@ bool VehicleStopCheckerBase::isVehicleStopped(const double stop_duration) const
   return true;
 }
 
-VehicleStopChecker::VehicleStopChecker(rclcpp::Node * node)
-: VehicleStopCheckerBase(node, velocity_buffer_time_sec)
-{
-  using std::placeholders::_1;
+// Explicit template instantiation for rclcpp::Node
+template class VehicleStopCheckerTemplate<rclcpp::Node>;
+template class VehicleArrivalCheckerTemplate<rclcpp::Node>;
 
-  sub_odom_ = node->create_subscription<Odometry>(
-    "/localization/kinematic_state", rclcpp::QoS(1),
-    std::bind(&VehicleStopChecker::onOdom, this, _1));
-}
-
-void VehicleStopChecker::onOdom(const Odometry::ConstSharedPtr msg)
-{
-  odometry_ptr_ = msg;
-
-  TwistStamped current_velocity;
-  current_velocity.header = msg->header;
-  current_velocity.twist = msg->twist.twist;
-  addTwist(current_velocity);
-}
-
-VehicleArrivalChecker::VehicleArrivalChecker(rclcpp::Node * node) : VehicleStopChecker(node)
-{
-  using std::placeholders::_1;
-
-  sub_trajectory_ = node->create_subscription<Trajectory>(
-    "/planning/trajectory", rclcpp::QoS(1),
-    std::bind(&VehicleArrivalChecker::onTrajectory, this, _1));
-}
-
-bool VehicleArrivalChecker::isVehicleStoppedAtStopPoint(const double stop_duration) const
-{
-  if (!odometry_ptr_ || !trajectory_ptr_) {
-    return false;
-  }
-
-  if (!isVehicleStopped(stop_duration)) {
-    return false;
-  }
-
-  const auto & p = odometry_ptr_->pose.pose.position;
-  const auto idx = autoware::motion_utils::searchZeroVelocityIndex(trajectory_ptr_->points);
-
-  if (!idx) {
-    return false;
-  }
-
-  return std::abs(autoware::motion_utils::calcSignedArcLength(
-           trajectory_ptr_->points, p, idx.value())) < th_arrived_distance_m;
-}
-
-void VehicleArrivalChecker::onTrajectory(const Trajectory::ConstSharedPtr msg)
-{
-  trajectory_ptr_ = msg;
-}
 }  // namespace autoware::motion_utils
