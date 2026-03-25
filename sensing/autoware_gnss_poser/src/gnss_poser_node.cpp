@@ -56,11 +56,12 @@ GNSSPoser::GNSSPoser(const rclcpp::NodeOptions & node_options)
       "autoware_orientation", rclcpp::QoS{1},
       std::bind(&GNSSPoser::callback_gnss_ins_orientation_stamped, this, std::placeholders::_1));
 
-  pose_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>("gnss_pose", rclcpp::QoS{1});
-  pose_cov_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
-    "gnss_pose_cov", rclcpp::QoS{1});
-  fixed_pub_ =
-    create_publisher<autoware_internal_debug_msgs::msg::BoolStamped>("gnss_fixed", rclcpp::QoS{1});
+  pose_pub_ =
+    agnocast::create_publisher<geometry_msgs::msg::PoseStamped>(this, "gnss_pose", rclcpp::QoS{1});
+  pose_cov_pub_ = agnocast::create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+    this, "gnss_pose_cov", rclcpp::QoS{1});
+  fixed_pub_ = agnocast::create_publisher<autoware_internal_debug_msgs::msg::BoolStamped>(
+    this, "gnss_fixed", rclcpp::QoS{1});
 
   // Set msg_gnss_ins_orientation_stamped_ with temporary values (not to publish zero value
   // covariances)
@@ -99,10 +100,10 @@ void GNSSPoser::callback_nav_sat_fix(
   const bool is_status_fixed = is_fixed(nav_sat_fix_msg_ptr->status);
 
   // publish is_fixed topic
-  autoware_internal_debug_msgs::msg::BoolStamped is_fixed_msg;
-  is_fixed_msg.stamp = this->now();
-  is_fixed_msg.data = is_status_fixed;
-  fixed_pub_->publish(is_fixed_msg);
+  auto is_fixed_loaned = fixed_pub_->borrow_loaned_message();
+  is_fixed_loaned->stamp = this->now();
+  is_fixed_loaned->data = is_status_fixed;
+  fixed_pub_->publish(std::move(is_fixed_loaned));
 
   if (!is_status_fixed) {
     RCLCPP_WARN_STREAM_THROTTLE(
@@ -176,33 +177,35 @@ void GNSSPoser::callback_nav_sat_fix(
   tf2::toMsg(tf_map2base_link, gnss_base_pose_msg.pose);
 
   // publish gnss_base_link pose in map frame
-  pose_pub_->publish(gnss_base_pose_msg);
+  auto pose_loaned = pose_pub_->borrow_loaned_message();
+  *pose_loaned = gnss_base_pose_msg;
+  pose_pub_->publish(std::move(pose_loaned));
 
   // publish gnss_base_link pose_cov in map frame
-  geometry_msgs::msg::PoseWithCovarianceStamped gnss_base_pose_cov_msg;
-  gnss_base_pose_cov_msg.header = gnss_base_pose_msg.header;
-  gnss_base_pose_cov_msg.pose.pose = gnss_base_pose_msg.pose;
-  gnss_base_pose_cov_msg.pose.covariance[7 * 0] =
+  auto pose_cov_loaned = pose_cov_pub_->borrow_loaned_message();
+  pose_cov_loaned->header = gnss_base_pose_msg.header;
+  pose_cov_loaned->pose.pose = gnss_base_pose_msg.pose;
+  pose_cov_loaned->pose.covariance[7 * 0] =
     can_get_covariance(*nav_sat_fix_msg_ptr) ? nav_sat_fix_msg_ptr->position_covariance[0] : 10.0;
-  gnss_base_pose_cov_msg.pose.covariance[7 * 1] =
+  pose_cov_loaned->pose.covariance[7 * 1] =
     can_get_covariance(*nav_sat_fix_msg_ptr) ? nav_sat_fix_msg_ptr->position_covariance[4] : 10.0;
-  gnss_base_pose_cov_msg.pose.covariance[7 * 2] =
+  pose_cov_loaned->pose.covariance[7 * 2] =
     can_get_covariance(*nav_sat_fix_msg_ptr) ? nav_sat_fix_msg_ptr->position_covariance[8] : 10.0;
 
   if (use_gnss_ins_orientation_) {
-    gnss_base_pose_cov_msg.pose.covariance[7 * 3] =
+    pose_cov_loaned->pose.covariance[7 * 3] =
       std::pow(msg_gnss_ins_orientation_stamped_->orientation.rmse_rotation_x, 2);
-    gnss_base_pose_cov_msg.pose.covariance[7 * 4] =
+    pose_cov_loaned->pose.covariance[7 * 4] =
       std::pow(msg_gnss_ins_orientation_stamped_->orientation.rmse_rotation_y, 2);
-    gnss_base_pose_cov_msg.pose.covariance[7 * 5] =
+    pose_cov_loaned->pose.covariance[7 * 5] =
       std::pow(msg_gnss_ins_orientation_stamped_->orientation.rmse_rotation_z, 2);
   } else {
-    gnss_base_pose_cov_msg.pose.covariance[7 * 3] = 0.1;
-    gnss_base_pose_cov_msg.pose.covariance[7 * 4] = 0.1;
-    gnss_base_pose_cov_msg.pose.covariance[7 * 5] = 1.0;
+    pose_cov_loaned->pose.covariance[7 * 3] = 0.1;
+    pose_cov_loaned->pose.covariance[7 * 4] = 0.1;
+    pose_cov_loaned->pose.covariance[7 * 5] = 1.0;
   }
 
-  pose_cov_pub_->publish(gnss_base_pose_cov_msg);
+  pose_cov_pub_->publish(std::move(pose_cov_loaned));
 
   // broadcast map to gnss_base_link
   publish_tf(map_frame_, gnss_base_frame_, gnss_base_pose_msg);

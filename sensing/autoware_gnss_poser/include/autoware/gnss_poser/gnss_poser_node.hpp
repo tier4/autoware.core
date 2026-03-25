@@ -14,6 +14,7 @@
 #ifndef AUTOWARE__GNSS_POSER__GNSS_POSER_NODE_HPP_
 #define AUTOWARE__GNSS_POSER__GNSS_POSER_NODE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/transform_datatypes.hpp>
 
@@ -76,9 +77,9 @@ private:
   rclcpp::Subscription<autoware_sensing_msgs::msg::GnssInsOrientationStamped>::SharedPtr
     autoware_orientation_sub_;
 
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::BoolStamped>::SharedPtr fixed_pub_;
+  agnocast::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
+  agnocast::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::BoolStamped>::SharedPtr fixed_pub_;
 
   autoware_map_msgs::msg::MapProjectorInfo projector_info_;
   const std::string base_frame_;

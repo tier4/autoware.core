@@ -29,8 +29,8 @@ VehicleVelocityConverter::VehicleVelocityConverter(const rclcpp::NodeOptions & o
     "velocity_status", rclcpp::QoS{100},
     std::bind(&VehicleVelocityConverter::callback_velocity_report, this, std::placeholders::_1));
 
-  twist_with_covariance_pub_ = create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
-    "twist_with_covariance", rclcpp::QoS{10});
+  twist_with_covariance_pub_ = agnocast::create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
+    this, "twist_with_covariance", rclcpp::QoS{10});
 }
 
 void VehicleVelocityConverter::callback_velocity_report(
@@ -53,7 +53,9 @@ void VehicleVelocityConverter::callback_velocity_report(
   twist_with_covariance_msg.twist.covariance[4 + 4 * 6] = 10000.0;
   twist_with_covariance_msg.twist.covariance[5 + 5 * 6] = stddev_wz_ * stddev_wz_;
 
-  twist_with_covariance_pub_->publish(twist_with_covariance_msg);
+  auto loaned_msg = twist_with_covariance_pub_->borrow_loaned_message();
+  *loaned_msg = twist_with_covariance_msg;
+  twist_with_covariance_pub_->publish(std::move(loaned_msg));
 }
 }  // namespace autoware::vehicle_velocity_converter
 
