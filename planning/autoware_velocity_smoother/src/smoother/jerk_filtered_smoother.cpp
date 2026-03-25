@@ -17,6 +17,8 @@
 #include "autoware/qp_interface/proxqp_interface.hpp"
 #include "autoware/velocity_smoother/trajectory_utils.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include <Eigen/Core>
 
 #include <algorithm>
@@ -32,16 +34,17 @@
 
 namespace autoware::velocity_smoother
 {
+template <typename NodeT>
 JerkFilteredSmoother::JerkFilteredSmoother(
-  rclcpp::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
+  NodeT & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 : SmootherBase(node, time_keeper)
 {
   auto & p = smoother_param_;
-  p.jerk_weight = node.declare_parameter<double>("jerk_weight");
-  p.over_v_weight = node.declare_parameter<double>("over_v_weight");
-  p.over_a_weight = node.declare_parameter<double>("over_a_weight");
-  p.over_j_weight = node.declare_parameter<double>("over_j_weight");
-  p.jerk_filter_ds = node.declare_parameter<double>("jerk_filter_ds");
+  p.jerk_weight = node.template declare_parameter<double>("jerk_weight");
+  p.over_v_weight = node.template declare_parameter<double>("over_v_weight");
+  p.over_a_weight = node.template declare_parameter<double>("over_a_weight");
+  p.over_j_weight = node.template declare_parameter<double>("over_j_weight");
+  p.jerk_filter_ds = node.template declare_parameter<double>("jerk_filter_ds");
 
   qp_interface_ =
     std::make_shared<autoware::qp_interface::ProxQPInterface>(false, 20000, 1.0e-8, 1.0e-6, false);
@@ -491,5 +494,10 @@ TrajectoryPoints JerkFilteredSmoother::resampleTrajectory(
     input, current_pose, nearest_dist_threshold, nearest_yaw_threshold, base_param_.resample_param,
     smoother_param_.jerk_filter_ds);
 }
+
+template JerkFilteredSmoother::JerkFilteredSmoother(
+  rclcpp::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
+template JerkFilteredSmoother::JerkFilteredSmoother(
+  agnocast::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
 
 }  // namespace autoware::velocity_smoother

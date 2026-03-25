@@ -273,7 +273,8 @@ MotionVelocityPlannerNode::process_no_ground_pointcloud(
 void MotionVelocityPlannerNode::set_velocity_smoother_params()
 {
   planner_data_->velocity_smoother_ =
-    std::make_shared<autoware::velocity_smoother::AnalyticalJerkConstrainedSmoother>(*this);
+    std::make_shared<autoware::velocity_smoother::AnalyticalJerkConstrainedSmoother>(
+      static_cast<rclcpp::Node &>(*this));
 }
 
 void MotionVelocityPlannerNode::on_lanelet_map(

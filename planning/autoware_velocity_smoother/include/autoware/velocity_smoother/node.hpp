@@ -27,14 +27,13 @@
 #include "autoware/velocity_smoother/trajectory_utils.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2/utils.hpp"
-#include "tf2_ros/transform_listener.h"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware_utils_debug/published_time_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 
 #include "autoware_adapi_v1_msgs/msg/operation_mode_state.hpp"
@@ -63,7 +62,8 @@ using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_internal_debug_msgs::msg::Float32Stamped;
 using autoware_internal_debug_msgs::msg::Float64Stamped;
 using autoware_internal_planning_msgs::msg::VelocityLimit;  // temporary
-using autoware_utils_diagnostics::DiagnosticsInterface;
+using AgnocastDiagnosticsInterface =
+  autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::PoseStamped;
@@ -79,30 +79,24 @@ struct Motion
   Motion(const double v, const double a) : vel(v), acc(a) {}
 };
 
-class VelocitySmootherNode : public rclcpp::Node
+class VelocitySmootherNode : public agnocast::Node
 {
 public:
   explicit VelocitySmootherNode(const rclcpp::NodeOptions & node_options);
 
 private:
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_virtual_wall_;
-  rclcpp::Subscription<Trajectory>::SharedPtr sub_current_trajectory_;
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<Odometry> sub_current_odometry_{
-    this, "/localization/kinematic_state"};
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
-    sub_current_acceleration_{this, "~/input/acceleration"};
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<
-    VelocityLimit, autoware_utils_rclcpp::polling_policy::Newest>
-    sub_external_velocity_limit_{this, "~/input/external_velocity_limit_mps"};
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<OperationModeState> sub_operation_mode_{
-    this, "~/input/operation_mode_state", rclcpp::QoS{1}.transient_local()};
+  agnocast::Publisher<Trajectory>::SharedPtr pub_trajectory_;
+  agnocast::Publisher<MarkerArray>::SharedPtr pub_virtual_wall_;
+  agnocast::Subscription<Trajectory>::SharedPtr sub_current_trajectory_;
+  agnocast::PollingSubscriber<Odometry>::SharedPtr sub_current_odometry_;
+  agnocast::PollingSubscriber<AccelWithCovarianceStamped>::SharedPtr sub_current_acceleration_;
+  agnocast::PollingSubscriber<VelocityLimit>::SharedPtr sub_external_velocity_limit_;
+  agnocast::PollingSubscriber<OperationModeState>::SharedPtr sub_operation_mode_;
 
-  Odometry::ConstSharedPtr current_odometry_ptr_;  // current odometry
-  AccelWithCovarianceStamped::ConstSharedPtr current_acceleration_ptr_;
-  VelocityLimit::ConstSharedPtr external_velocity_limit_ptr_{
-    nullptr};                                     // external velocity limit message
-  Trajectory::ConstSharedPtr base_traj_raw_ptr_;  // current base_waypoints
+  agnocast::ipc_shared_ptr<const Odometry> current_odometry_ptr_;  // current odometry
+  agnocast::ipc_shared_ptr<const AccelWithCovarianceStamped> current_acceleration_ptr_;
+  agnocast::ipc_shared_ptr<const VelocityLimit> external_velocity_limit_ptr_;  // external velocity limit
+  agnocast::ipc_shared_ptr<const Trajectory> base_traj_raw_ptr_;  // current base_waypoints
   double max_velocity_with_deceleration_;         // maximum velocity with deceleration
                                                   // for external velocity limit
   double wheelbase_;                              // wheelbase
@@ -193,7 +187,7 @@ private:
     const std::vector<rclcpp::Parameter> & parameters);
 
   // topic callback
-  void onCurrentTrajectory(const Trajectory::ConstSharedPtr msg);
+  void onCurrentTrajectory(const agnocast::ipc_shared_ptr<const Trajectory> & msg);
 
   void calcExternalVelocityLimit();
 
@@ -240,7 +234,7 @@ private:
 
   void publishClosestVelocity(
     const TrajectoryPoints & trajectory, const Pose & current_pose,
-    const rclcpp::Publisher<Float32Stamped>::SharedPtr pub) const;
+    const agnocast::Publisher<Float32Stamped>::SharedPtr & pub) const;
 
   Trajectory toTrajectoryMsg(
     const TrajectoryPoints & points, const std_msgs::msg::Header * header = nullptr) const;
@@ -256,26 +250,26 @@ private:
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch_;
   std::shared_ptr<rclcpp::Time> prev_time_;
   double prev_acc_;
-  rclcpp::Publisher<Float32Stamped>::SharedPtr pub_dist_to_stopline_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_raw_;
-  rclcpp::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_vel_lim_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_latacc_filtered_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_steering_rate_limited_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_resampled_;
-  rclcpp::Publisher<Float32Stamped>::SharedPtr debug_closest_velocity_;
-  rclcpp::Publisher<Float32Stamped>::SharedPtr debug_closest_acc_;
-  rclcpp::Publisher<Float32Stamped>::SharedPtr debug_closest_jerk_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr debug_calculation_time_;
-  rclcpp::Publisher<Float32Stamped>::SharedPtr debug_closest_max_velocity_;
-  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+  agnocast::Publisher<Float32Stamped>::SharedPtr pub_dist_to_stopline_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_trajectory_raw_;
+  agnocast::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_trajectory_vel_lim_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_trajectory_latacc_filtered_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_trajectory_steering_rate_limited_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_trajectory_resampled_;
+  agnocast::Publisher<Float32Stamped>::SharedPtr debug_closest_velocity_;
+  agnocast::Publisher<Float32Stamped>::SharedPtr debug_closest_acc_;
+  agnocast::Publisher<Float32Stamped>::SharedPtr debug_closest_jerk_;
+  agnocast::Publisher<Float64Stamped>::SharedPtr debug_calculation_time_;
+  agnocast::Publisher<Float32Stamped>::SharedPtr debug_closest_max_velocity_;
+  agnocast::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_;
 
   // For Jerk Filtered Algorithm Debug
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_forward_filtered_trajectory_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_backward_filtered_trajectory_;
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_merged_filtered_trajectory_;
-  rclcpp::Publisher<Float32Stamped>::SharedPtr pub_closest_merged_velocity_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_forward_filtered_trajectory_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_backward_filtered_trajectory_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_merged_filtered_trajectory_;
+  agnocast::Publisher<Float32Stamped>::SharedPtr pub_closest_merged_velocity_;
 
   // helper functions
   size_t findNearestIndexFromEgo(const TrajectoryPoints & points) const;
@@ -283,12 +277,14 @@ private:
   void flipVelocity(TrajectoryPoints & points) const;
   void publishStopWatchTime();
 
-  std::unique_ptr<autoware_utils_logging::LoggerLevelConfigure> logger_configure_;
-  std::unique_ptr<autoware_utils_debug::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>
+    logger_configure_;
+  std::unique_ptr<autoware_utils_debug::BasicPublishedTimePublisher<agnocast::Node>>
+    published_time_publisher_;
 
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
 
-  std::unique_ptr<DiagnosticsInterface> diagnostics_interface_{nullptr};
+  std::unique_ptr<AgnocastDiagnosticsInterface> diagnostics_interface_{nullptr};
 };
 }  // namespace autoware::velocity_smoother
 

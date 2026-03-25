@@ -16,6 +16,8 @@
 
 #include "autoware/velocity_smoother/trajectory_utils.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include <Eigen/Core>
 
 #include <algorithm>
@@ -26,14 +28,15 @@
 
 namespace autoware::velocity_smoother
 {
+template <typename NodeT>
 LinfPseudoJerkSmoother::LinfPseudoJerkSmoother(
-  rclcpp::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
+  NodeT & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 : SmootherBase(node, time_keeper)
 {
   auto & p = smoother_param_;
-  p.pseudo_jerk_weight = node.declare_parameter<double>("pseudo_jerk_weight");
-  p.over_v_weight = node.declare_parameter<double>("over_v_weight");
-  p.over_a_weight = node.declare_parameter<double>("over_a_weight");
+  p.pseudo_jerk_weight = node.template declare_parameter<double>("pseudo_jerk_weight");
+  p.over_v_weight = node.template declare_parameter<double>("over_v_weight");
+  p.over_a_weight = node.template declare_parameter<double>("over_a_weight");
 
   qp_solver_.updateMaxIter(20000);
   qp_solver_.updateRhoInterval(5000);
@@ -257,5 +260,10 @@ TrajectoryPoints LinfPseudoJerkSmoother::resampleTrajectory(
     input, v0, current_pose, nearest_dist_threshold, nearest_yaw_threshold,
     base_param_.resample_param);
 }
+
+template LinfPseudoJerkSmoother::LinfPseudoJerkSmoother(
+  rclcpp::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
+template LinfPseudoJerkSmoother::LinfPseudoJerkSmoother(
+  agnocast::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
 
 }  // namespace autoware::velocity_smoother

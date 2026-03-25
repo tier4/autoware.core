@@ -43,8 +43,9 @@ public:
     double jerk_filter_ds;
   };
 
+  template <typename NodeT>
   explicit JerkFilteredSmoother(
-    rclcpp::Node & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
+    NodeT & node, const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
 
   bool apply(
     const double initial_vel, const double initial_acc, const TrajectoryPoints & input,
