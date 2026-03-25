@@ -27,6 +27,13 @@ rclcpp_components_register_node(pointcloud_map_loader_node
   EXECUTABLE autoware_pointcloud_map_loader
 )
 
+agnocast_components_register_node(pointcloud_map_loader_node
+  PLUGIN "autoware::map_loader::PointCloudMapLoaderNode"
+  EXECUTABLE autoware_pointcloud_map_loader_agnocast
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
 ament_auto_add_library(lanelet2_map_loader_node SHARED
   src/lanelet2_map_loader/lanelet2_map_loader_node.cpp
 )
@@ -34,6 +41,14 @@ ament_auto_add_library(lanelet2_map_loader_node SHARED
 rclcpp_components_register_node(lanelet2_map_loader_node
   PLUGIN "autoware::map_loader::Lanelet2MapLoaderNode"
   EXECUTABLE autoware_lanelet2_map_loader
+)
+
+find_package(agnocast_components REQUIRED)
+agnocast_components_register_node(lanelet2_map_loader_node
+  PLUGIN "autoware::map_loader::Lanelet2MapLoaderNode"
+  EXECUTABLE autoware_lanelet2_map_loader_agnocast
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)
