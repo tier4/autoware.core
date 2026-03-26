@@ -15,6 +15,7 @@
 #ifndef UTILS__ROUTE_CONVERSION_HPP_
 #define UTILS__ROUTE_CONVERSION_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/route.hpp>
@@ -40,26 +41,28 @@ using ExternalState = autoware_adapi_v1_msgs::msg::RouteState;
 using InternalState = autoware_planning_msgs::msg::RouteState;
 ExternalState convert_state(const InternalState & internal);
 
-using ExternalClearRequest = autoware_adapi_v1_msgs::srv::ClearRoute::Request::SharedPtr;
-using InternalClearRequest = autoware_planning_msgs::srv::ClearRoute::Request::SharedPtr;
-InternalClearRequest convert_request(const ExternalClearRequest & external);
+using ExternalClearRequest = autoware_adapi_v1_msgs::srv::ClearRoute::Request;
+using InternalClearRequest = autoware_planning_msgs::srv::ClearRoute::Request;
+void convert_request(const ExternalClearRequest & external, InternalClearRequest & internal);
 
-using ExternalLaneletRequest = autoware_adapi_v1_msgs::srv::SetRoute::Request::SharedPtr;
-using InternalLaneletRequest = autoware_planning_msgs::srv::SetLaneletRoute::Request::SharedPtr;
-InternalLaneletRequest convert_request(const ExternalLaneletRequest & external);
+using ExternalLaneletRequest = autoware_adapi_v1_msgs::srv::SetRoute::Request;
+using InternalLaneletRequest = autoware_planning_msgs::srv::SetLaneletRoute::Request;
+void convert_request(const ExternalLaneletRequest & external, InternalLaneletRequest & internal);
 
-using ExternalWaypointRequest = autoware_adapi_v1_msgs::srv::SetRoutePoints::Request::SharedPtr;
-using InternalWaypointRequest = autoware_planning_msgs::srv::SetWaypointRoute::Request::SharedPtr;
-InternalWaypointRequest convert_request(const ExternalWaypointRequest & external);
+using ExternalWaypointRequest = autoware_adapi_v1_msgs::srv::SetRoutePoints::Request;
+using InternalWaypointRequest = autoware_planning_msgs::srv::SetWaypointRoute::Request;
+void convert_request(const ExternalWaypointRequest & external, InternalWaypointRequest & internal);
 
 using ExternalResponse = autoware_adapi_v1_msgs::msg::ResponseStatus;
 using InternalResponse = autoware_common_msgs::msg::ResponseStatus;
 ExternalResponse convert_response(const InternalResponse & internal);
 
 template <class ClientT, class RequestT>
-ExternalResponse convert_call(ClientT & client, RequestT & req)
+ExternalResponse convert_call(ClientT & client, const RequestT & req)
 {
-  auto future = client->async_send_request(convert_request(req));
+  auto loaned = client->borrow_loaned_request();
+  convert_request(*req, *loaned);
+  auto future = client->async_send_request(std::move(loaned));
   return convert_response(future.get()->status);
 }
 

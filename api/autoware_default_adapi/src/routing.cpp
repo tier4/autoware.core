@@ -49,104 +49,79 @@ namespace autoware::default_adapi
 {
 
 RoutingNode::RoutingNode(const rclcpp::NodeOptions & options)
-: Node("routing", options), diagnostics_(this), vehicle_stop_checker_(this)
+: Node("routing", options), vehicle_stop_checker_(this)
 {
   stop_check_duration_ = declare_parameter<double>("stop_check_duration");
-
-  diagnostics_.setHardwareID("none");
-  diagnostics_.add("state", this, &RoutingNode::diagnose_state);
 
   group_cli_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   // AD API Interface
-  pub_state_ = create_publisher<autoware::adapi_specs::routing::RouteState::Message>(
+  pub_state_ = this->create_publisher<autoware::adapi_specs::routing::RouteState::Message>(
     autoware::adapi_specs::routing::RouteState::name,
     autoware::component_interface_specs::get_qos<autoware::adapi_specs::routing::RouteState>());
-  pub_route_ = create_publisher<autoware::adapi_specs::routing::Route::Message>(
+  pub_route_ = this->create_publisher<autoware::adapi_specs::routing::Route::Message>(
     autoware::adapi_specs::routing::Route::name,
     autoware::component_interface_specs::get_qos<autoware::adapi_specs::routing::Route>());
-  srv_clear_route_ = create_service<autoware::adapi_specs::routing::ClearRoute::Service>(
+  srv_clear_route_ = this->create_service<autoware::adapi_specs::routing::ClearRoute::Service>(
     autoware::adapi_specs::routing::ClearRoute::name,
     std::bind(&RoutingNode::on_clear_route, this, std::placeholders::_1, std::placeholders::_2));
-  srv_set_route_ = create_service<autoware::adapi_specs::routing::SetRoute::Service>(
+  srv_set_route_ = this->create_service<autoware::adapi_specs::routing::SetRoute::Service>(
     autoware::adapi_specs::routing::SetRoute::name,
     std::bind(&RoutingNode::on_set_route, this, std::placeholders::_1, std::placeholders::_2));
-  srv_set_route_points_ = create_service<autoware::adapi_specs::routing::SetRoutePoints::Service>(
-    autoware::adapi_specs::routing::SetRoutePoints::name,
-    std::bind(
-      &RoutingNode::on_set_route_points, this, std::placeholders::_1, std::placeholders::_2));
-  srv_change_route_ = create_service<autoware::adapi_specs::routing::ChangeRoute::Service>(
+  srv_set_route_points_ =
+    this->create_service<autoware::adapi_specs::routing::SetRoutePoints::Service>(
+      autoware::adapi_specs::routing::SetRoutePoints::name,
+      std::bind(
+        &RoutingNode::on_set_route_points, this, std::placeholders::_1, std::placeholders::_2));
+  srv_change_route_ = this->create_service<autoware::adapi_specs::routing::ChangeRoute::Service>(
     autoware::adapi_specs::routing::ChangeRoute::name,
     std::bind(&RoutingNode::on_change_route, this, std::placeholders::_1, std::placeholders::_2));
   srv_change_route_points_ =
-    create_service<autoware::adapi_specs::routing::ChangeRoutePoints::Service>(
+    this->create_service<autoware::adapi_specs::routing::ChangeRoutePoints::Service>(
       autoware::adapi_specs::routing::ChangeRoutePoints::name,
       std::bind(
         &RoutingNode::on_change_route_points, this, std::placeholders::_1, std::placeholders::_2));
 
   // Component Interface
   sub_state_ =
-    create_subscription<autoware::component_interface_specs::planning::RouteState::Message>(
+    this->create_subscription<autoware::component_interface_specs::planning::RouteState::Message>(
       autoware::component_interface_specs::planning::RouteState::name,
       autoware::component_interface_specs::get_qos<
         autoware::component_interface_specs::planning::RouteState>(),
       std::bind(&RoutingNode::on_state, this, std::placeholders::_1));
   sub_route_ =
-    create_subscription<autoware::component_interface_specs::planning::LaneletRoute::Message>(
+    this->create_subscription<autoware::component_interface_specs::planning::LaneletRoute::Message>(
       autoware::component_interface_specs::planning::LaneletRoute::name,
       autoware::component_interface_specs::get_qos<
         autoware::component_interface_specs::planning::LaneletRoute>(),
       std::bind(&RoutingNode::on_route, this, std::placeholders::_1));
   cli_clear_route_ =
-    create_client<autoware::component_interface_specs::planning::ClearRoute::Service>(
+    this->create_client<autoware::component_interface_specs::planning::ClearRoute::Service>(
       autoware::component_interface_specs::planning::ClearRoute::name,
-      rmw_qos_profile_services_default, group_cli_);
+      rclcpp::ServicesQoS(), group_cli_);
   cli_set_waypoint_route_ =
-    create_client<autoware::component_interface_specs::planning::SetWaypointRoute::Service>(
+    this->create_client<autoware::component_interface_specs::planning::SetWaypointRoute::Service>(
       autoware::component_interface_specs::planning::SetWaypointRoute::name,
-      rmw_qos_profile_services_default, group_cli_);
+      rclcpp::ServicesQoS(), group_cli_);
   cli_set_lanelet_route_ =
-    create_client<autoware::component_interface_specs::planning::SetLaneletRoute::Service>(
+    this->create_client<autoware::component_interface_specs::planning::SetLaneletRoute::Service>(
       autoware::component_interface_specs::planning::SetLaneletRoute::name,
-      rmw_qos_profile_services_default, group_cli_);
-  sub_operation_mode_ =
-    create_subscription<autoware::component_interface_specs::system::OperationModeState::Message>(
-      autoware::component_interface_specs::system::OperationModeState::name,
-      autoware::component_interface_specs::get_qos<
-        autoware::component_interface_specs::system::OperationModeState>(),
-      std::bind(&RoutingNode::on_operation_mode, this, std::placeholders::_1));
+      rclcpp::ServicesQoS(), group_cli_);
+  sub_operation_mode_ = this->create_subscription<
+    autoware::component_interface_specs::system::OperationModeState::Message>(
+    autoware::component_interface_specs::system::OperationModeState::name,
+    autoware::component_interface_specs::get_qos<
+      autoware::component_interface_specs::system::OperationModeState>(),
+    std::bind(&RoutingNode::on_operation_mode, this, std::placeholders::_1));
 
   cli_operation_mode_ =
-    create_client<autoware::component_interface_specs::system::ChangeOperationMode::Service>(
+    this->create_client<autoware::component_interface_specs::system::ChangeOperationMode::Service>(
       autoware::component_interface_specs::system::ChangeOperationMode::name,
-      rmw_qos_profile_services_default, group_cli_);
+      rclcpp::ServicesQoS(), group_cli_);
 
   is_autoware_control_ = false;
   is_auto_mode_ = false;
   state_.state = State::Message::UNKNOWN;
-}
-
-void RoutingNode::diagnose_state(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  using diagnostic_msgs::msg::DiagnosticStatus;
-  const auto message = std::to_string(state_.state);
-
-  switch (state_.state) {
-    case State::Message::SET:
-    case State::Message::REROUTING:
-    case State::Message::ARRIVED:
-      stat.summary(DiagnosticStatus::OK, message);
-      break;
-    case State::Message::UNKNOWN:
-    case State::Message::INITIALIZING:
-    case State::Message::UNSET:
-    case State::Message::ROUTING:
-    case State::Message::ABORTED:
-    case State::Message::INTERRUPTED:
-    default:
-      stat.summary(DiagnosticStatus::ERROR, message);
-      break;
-  }
 }
 
 void RoutingNode::change_stop_mode()
@@ -159,19 +134,20 @@ void RoutingNode::change_stop_mode()
       return;
     }
 
-    const auto req = std::make_shared<OperationModeRequest>();
+    auto req = cli_operation_mode_->borrow_loaned_request();
     req->mode = OperationModeRequest::STOP;
-    cli_operation_mode_->async_send_request(req);
+    cli_operation_mode_->async_send_request(std::move(req));
   }
 }
 
-void RoutingNode::on_operation_mode(const OperationModeState::Message::ConstSharedPtr msg)
+void RoutingNode::on_operation_mode(
+  const agnocast::ipc_shared_ptr<const OperationModeState::Message> & msg)
 {
   is_autoware_control_ = msg->is_autoware_control_enabled;
   is_auto_mode_ = msg->mode == OperationModeState::Message::AUTONOMOUS;
 }
 
-void RoutingNode::on_state(const State::Message::ConstSharedPtr msg)
+void RoutingNode::on_state(const agnocast::ipc_shared_ptr<const State::Message> & msg)
 {
   // TODO(Takagi, Isamu): Add adapi initializing state.
   // Represent initializing state by not publishing the topic for now.
@@ -180,7 +156,11 @@ void RoutingNode::on_state(const State::Message::ConstSharedPtr msg)
   }
 
   state_ = *msg;
-  pub_state_->publish(conversion::convert_state(*msg));
+  {
+    auto loaned = pub_state_->borrow_loaned_message();
+    *loaned = conversion::convert_state(*msg);
+    pub_state_->publish(std::move(loaned));
+  }
 
   // Change operation mode to stop when the vehicle arrives.
   if (msg->state == State::Message::ARRIVED) {
@@ -189,18 +169,24 @@ void RoutingNode::on_state(const State::Message::ConstSharedPtr msg)
 
   // TODO(Takagi, Isamu): Remove when the mission planner supports an empty route.
   if (msg->state == State::Message::UNSET) {
-    pub_route_->publish(conversion::create_empty_route(msg->stamp));
+    auto loaned = pub_route_->borrow_loaned_message();
+    *loaned = conversion::create_empty_route(msg->stamp);
+    pub_route_->publish(std::move(loaned));
   }
 }
 
-void RoutingNode::on_route(const Route::Message::ConstSharedPtr msg)
+void RoutingNode::on_route(const agnocast::ipc_shared_ptr<const Route::Message> & msg)
 {
-  pub_route_->publish(conversion::convert_route(*msg));
+  auto loaned = pub_route_->borrow_loaned_message();
+  *loaned = conversion::convert_route(*msg);
+  pub_route_->publish(std::move(loaned));
 }
 
 void RoutingNode::on_clear_route(
-  const autoware::adapi_specs::routing::ClearRoute::Service::Request::SharedPtr req,
-  const autoware::adapi_specs::routing::ClearRoute::Service::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::ClearRoute::Service>::RequestT> & req,
+  agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::ClearRoute::Service>::ResponseT> & res)
 {
   // For safety, do not clear the route while it is in use.
   // https://autowarefoundation.github.io/autoware-documentation/main/design/autoware-interfaces/ad-api/list/api/routing/clear_route/
@@ -221,8 +207,10 @@ void RoutingNode::on_clear_route(
 }
 
 void RoutingNode::on_set_route_points(
-  const autoware::adapi_specs::routing::SetRoutePoints::Service::Request::SharedPtr req,
-  const autoware::adapi_specs::routing::SetRoutePoints::Service::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::SetRoutePoints::Service>::RequestT> & req,
+  agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::SetRoutePoints::Service>::ResponseT> & res)
 {
   if (state_.state != State::Message::UNSET) {
     res->status = route_already_set<autoware::adapi_specs::routing::SetRoutePoints>();
@@ -236,8 +224,10 @@ void RoutingNode::on_set_route_points(
 }
 
 void RoutingNode::on_set_route(
-  const autoware::adapi_specs::routing::SetRoute::Service::Request::SharedPtr req,
-  const autoware::adapi_specs::routing::SetRoute::Service::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::SetRoute::Service>::RequestT> & req,
+  agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::SetRoute::Service>::ResponseT> & res)
 {
   if (state_.state != State::Message::UNSET) {
     res->status = route_already_set<autoware::adapi_specs::routing::SetRoute>();
@@ -251,8 +241,11 @@ void RoutingNode::on_set_route(
 }
 
 void RoutingNode::on_change_route_points(
-  const autoware::adapi_specs::routing::SetRoutePoints::Service::Request::SharedPtr req,
-  const autoware::adapi_specs::routing::SetRoutePoints::Service::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::ChangeRoutePoints::Service>::RequestT> & req,
+  agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::ChangeRoutePoints::Service>::ResponseT> &
+    res)
 {
   if (state_.state != State::Message::SET) {
     res->status = route_is_not_set<autoware::adapi_specs::routing::SetRoutePoints>();
@@ -266,8 +259,10 @@ void RoutingNode::on_change_route_points(
 }
 
 void RoutingNode::on_change_route(
-  const autoware::adapi_specs::routing::SetRoute::Service::Request::SharedPtr req,
-  const autoware::adapi_specs::routing::SetRoute::Service::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::ChangeRoute::Service>::RequestT> & req,
+  agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::routing::ChangeRoute::Service>::ResponseT> & res)
 {
   if (state_.state != State::Message::SET) {
     res->status = route_is_not_set<autoware::adapi_specs::routing::SetRoute>();

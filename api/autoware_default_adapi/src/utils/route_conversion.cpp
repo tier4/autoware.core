@@ -14,7 +14,6 @@
 
 #include "route_conversion.hpp"
 
-#include <memory>
 #include <vector>
 
 namespace
@@ -134,30 +133,25 @@ ExternalState convert_state(const InternalState & internal)
   return external;
 }
 
-InternalClearRequest convert_request(const ExternalClearRequest &)
+void convert_request(const ExternalClearRequest &, InternalClearRequest &)
 {
-  auto internal = std::make_shared<InternalClearRequest::element_type>();
-  return internal;
+  // No fields to convert for clear request.
 }
 
-InternalLaneletRequest convert_request(const ExternalLaneletRequest & external)
+void convert_request(const ExternalLaneletRequest & external, InternalLaneletRequest & internal)
 {
-  auto internal = std::make_shared<InternalLaneletRequest::element_type>();
-  internal->header = external->header;
-  internal->goal_pose = external->goal;
-  internal->segments = convert_vector<LaneletSegment>(external->segments);
-  internal->allow_modification = external->option.allow_goal_modification;
-  return internal;
+  internal.header = external.header;
+  internal.goal_pose = external.goal;
+  internal.segments = convert_vector<LaneletSegment>(external.segments);
+  internal.allow_modification = external.option.allow_goal_modification;
 }
 
-InternalWaypointRequest convert_request(const ExternalWaypointRequest & external)
+void convert_request(const ExternalWaypointRequest & external, InternalWaypointRequest & internal)
 {
-  auto internal = std::make_shared<InternalWaypointRequest::element_type>();
-  internal->header = external->header;
-  internal->goal_pose = external->goal;
-  internal->waypoints = external->waypoints;
-  internal->allow_modification = external->option.allow_goal_modification;
-  return internal;
+  internal.header = external.header;
+  internal.goal_pose = external.goal;
+  internal.waypoints = external.waypoints;
+  internal.allow_modification = external.option.allow_goal_modification;
 }
 
 ExternalResponse convert_response(const InternalResponse & internal)

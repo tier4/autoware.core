@@ -37,13 +37,14 @@ PoseInitializer::PoseInitializer(const rclcpp::NodeOptions & options)
   rclcpp::QoS qos_state(1);
   qos_state.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   qos_state.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
-  pub_state_ = create_publisher<State::Message>(
-    State::name, autoware::component_interface_specs::get_qos<State>());
-  srv_initialize_ = create_service<Initialize::Service>(
-    Initialize::name,
-    std::bind(&PoseInitializer::on_initialize, this, std::placeholders::_1, std::placeholders::_2),
-    rmw_qos_profile_services_default, group_srv_);
-  pub_reset_ = create_publisher<PoseWithCovarianceStamped>("pose_reset", 1);
+  pub_state_ = agnocast::create_publisher<State::Message>(
+    this, State::name, autoware::component_interface_specs::get_qos<State>());
+  srv_initialize_ = agnocast::create_service<Initialize::Service>(
+    this, Initialize::name,
+    std::bind(
+      &PoseInitializer::on_initialize, this, std::placeholders::_1, std::placeholders::_2),
+    rclcpp::ServicesQoS(), group_srv_);
+  pub_reset_ = agnocast::create_publisher<PoseWithCovarianceStamped>(this, "pose_reset", 1);
 
   output_pose_covariance_ = get_covariance_parameter(this, "output_pose_covariance");
   gnss_particle_covariance_ = get_covariance_parameter(this, "gnss_particle_covariance");
@@ -74,6 +75,14 @@ PoseInitializer::PoseInitializer(const rclcpp::NodeOptions & options)
   logger_configure_ = std::make_unique<autoware_utils_logging::LoggerLevelConfigure>(this);
 
   change_state(State::Message::UNINITIALIZED);
+
+  // Periodically re-publish state for agnocast subscribers (no TRANSIENT_LOCAL support)
+  // Use wall timer to avoid dependency on /clock (sim time)
+  state_pub_timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]() {
+    auto loaned = pub_state_->borrow_loaned_message();
+    *loaned = state_;
+    pub_state_->publish(std::move(loaned));
+  });
 
   if (declare_parameter<bool>("user_defined_initial_pose.enable")) {
     const auto initial_pose_array =
@@ -106,7 +115,9 @@ void PoseInitializer::change_state(State::Message::_state_type state)
 {
   state_.stamp = now();
   state_.state = state;
-  pub_state_->publish(state_);
+  auto loaned = pub_state_->borrow_loaned_message();
+  *loaned = state_;
+  pub_state_->publish(std::move(loaned));
 }
 
 // To execute in the constructor, you need to call ros spin.
@@ -139,7 +150,9 @@ void PoseInitializer::set_user_defined_initial_pose(
     pose.header.stamp = now();
     pose.pose.pose = initial_pose;
     pose.pose.covariance = output_pose_covariance_;
-    pub_reset_->publish(pose);
+    auto loaned_reset = pub_reset_->borrow_loaned_message();
+    *loaned_reset = pose;
+    pub_reset_->publish(std::move(loaned_reset));
 
     change_node_trigger(true, need_spin);
     change_state(State::Message::INITIALIZED);
@@ -152,8 +165,8 @@ void PoseInitializer::set_user_defined_initial_pose(
 }
 
 void PoseInitializer::on_initialize(
-  const Initialize::Service::Request::SharedPtr req,
-  const Initialize::Service::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<const agnocast::Service<Initialize::Service>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<Initialize::Service>::ResponseT> & res)
 {
   try {
     // NOTE: This function is not executed during initialization because mutually exclusive.
@@ -211,7 +224,9 @@ void PoseInitializer::on_initialize(
       diagnostics_pose_reliable_->publish(this->now());
 
       pose.pose.covariance = output_pose_covariance_;
-      pub_reset_->publish(pose);
+      auto loaned_reset = pub_reset_->borrow_loaned_message();
+      *loaned_reset = pose;
+      pub_reset_->publish(std::move(loaned_reset));
 
       change_node_trigger(true, false);
       res->status.success = true;

@@ -15,15 +15,15 @@
 #ifndef LOCALIZATION_HPP_
 #define LOCALIZATION_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/localization.hpp>
 #include <autoware/component_interface_specs/localization.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace autoware::default_adapi
 {
 
-class LocalizationNode : public rclcpp::Node
+class LocalizationNode : public agnocast::Node
 {
 public:
   explicit LocalizationNode(const rclcpp::NodeOptions & options);
@@ -32,24 +32,25 @@ private:
   using ImplState = autoware::component_interface_specs::localization::InitializationState;
 
   rclcpp::CallbackGroup::SharedPtr group_cli_;
-  rclcpp::Service<autoware::adapi_specs::localization::Initialize::Service>::SharedPtr
+  agnocast::Service<autoware::adapi_specs::localization::Initialize::Service>::SharedPtr
     srv_initialize_;
-  rclcpp::Publisher<autoware::adapi_specs::localization::InitializationState::Message>::SharedPtr
+  agnocast::Publisher<autoware::adapi_specs::localization::InitializationState::Message>::SharedPtr
     pub_state_;
-  rclcpp::Client<autoware::component_interface_specs::localization::Initialize::Service>::SharedPtr
+  agnocast::Client<autoware::component_interface_specs::localization::Initialize::Service>::SharedPtr
     cli_initialize_;
-  rclcpp::Subscription<
+  agnocast::Subscription<
     autoware::component_interface_specs::localization::InitializationState::Message>::SharedPtr
     sub_state_;
 
-  void diagnose_state(diagnostic_updater::DiagnosticStatusWrapper & stat);
-  void on_state(const ImplState::Message::ConstSharedPtr msg);
+  void on_state(const agnocast::ipc_shared_ptr<const ImplState::Message> & msg);
   void on_initialize(
-    const autoware::adapi_specs::localization::Initialize::Service::Request::SharedPtr req,
-    const autoware::adapi_specs::localization::Initialize::Service::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<
+      agnocast::Service<autoware::adapi_specs::localization::Initialize::Service>::RequestT> & req,
+    agnocast::ipc_shared_ptr<
+      agnocast::Service<autoware::adapi_specs::localization::Initialize::Service>::ResponseT> &
+      res);
 
   ImplState::Message state_;
-  diagnostic_updater::Updater diagnostics_;
 };
 
 }  // namespace autoware::default_adapi

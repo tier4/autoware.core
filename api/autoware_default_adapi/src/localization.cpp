@@ -22,58 +22,50 @@ namespace autoware::default_adapi
 {
 
 LocalizationNode::LocalizationNode(const rclcpp::NodeOptions & options)
-: Node("localization", options), diagnostics_(this)
+: Node("localization", options)
 {
-  diagnostics_.setHardwareID("none");
-  diagnostics_.add("state", this, &LocalizationNode::diagnose_state);
-
   group_cli_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   // AD API
-  pub_state_ = create_publisher<autoware::adapi_specs::localization::InitializationState::Message>(
-    autoware::adapi_specs::localization::InitializationState::name,
-    autoware::component_interface_specs::get_qos<
-      autoware::adapi_specs::localization::InitializationState>());
-  srv_initialize_ = create_service<autoware::adapi_specs::localization::Initialize::Service>(
-    autoware::adapi_specs::localization::Initialize::name,
-    std::bind(&LocalizationNode::on_initialize, this, std::placeholders::_1, std::placeholders::_2),
-    rmw_qos_profile_services_default, group_cli_);
+  pub_state_ =
+    this->create_publisher<autoware::adapi_specs::localization::InitializationState::Message>(
+      autoware::adapi_specs::localization::InitializationState::name,
+      autoware::component_interface_specs::get_qos<
+        autoware::adapi_specs::localization::InitializationState>());
+  srv_initialize_ =
+    this->create_service<autoware::adapi_specs::localization::Initialize::Service>(
+      autoware::adapi_specs::localization::Initialize::name,
+      std::bind(
+        &LocalizationNode::on_initialize, this, std::placeholders::_1, std::placeholders::_2));
 
   // Component Interface
-  sub_state_ = create_subscription<
+  sub_state_ = this->create_subscription<
     autoware::component_interface_specs::localization::InitializationState::Message>(
     autoware::component_interface_specs::localization::InitializationState::name,
     autoware::component_interface_specs::get_qos<
       autoware::component_interface_specs::localization::InitializationState>(),
     std::bind(&LocalizationNode::on_state, this, std::placeholders::_1));
   cli_initialize_ =
-    create_client<autoware::component_interface_specs::localization::Initialize::Service>(
-      autoware::component_interface_specs::localization::Initialize::name);
+    this->create_client<autoware::component_interface_specs::localization::Initialize::Service>(
+      autoware::component_interface_specs::localization::Initialize::name,
+      rclcpp::ServicesQoS(), group_cli_);
 
   state_.state = ImplState::Message::UNKNOWN;
 }
 
-void LocalizationNode::diagnose_state(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  using diagnostic_msgs::msg::DiagnosticStatus;
-  const auto message = std::to_string(state_.state);
-
-  if (state_.state == ImplState::Message::INITIALIZED) {
-    stat.summary(DiagnosticStatus::OK, message);
-  } else {
-    stat.summary(DiagnosticStatus::ERROR, message);
-  }
-}
-
-void LocalizationNode::on_state(const ImplState::Message::ConstSharedPtr msg)
+void LocalizationNode::on_state(const agnocast::ipc_shared_ptr<const ImplState::Message> & msg)
 {
   state_ = *msg;
-  pub_state_->publish(*msg);
+  auto loaned = pub_state_->borrow_loaned_message();
+  *loaned = *msg;
+  pub_state_->publish(std::move(loaned));
 }
 
 void LocalizationNode::on_initialize(
-  const autoware::adapi_specs::localization::Initialize::Service::Request::SharedPtr req,
-  const autoware::adapi_specs::localization::Initialize::Service::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::localization::Initialize::Service>::RequestT> & req,
+  agnocast::ipc_shared_ptr<
+    agnocast::Service<autoware::adapi_specs::localization::Initialize::Service>::ResponseT> & res)
 {
   if (!cli_initialize_->service_is_ready()) {
     RCLCPP_ERROR(get_logger(), "Initialize service is not ready");

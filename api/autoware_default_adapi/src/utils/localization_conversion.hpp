@@ -15,6 +15,7 @@
 #ifndef UTILS__LOCALIZATION_CONVERSION_HPP_
 #define UTILS__LOCALIZATION_CONVERSION_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/srv/initialize_localization.hpp>
@@ -24,19 +25,23 @@ namespace autoware::default_adapi::localization_conversion
 {
 
 using ExternalInitializeRequest =
-  autoware_adapi_v1_msgs::srv::InitializeLocalization::Request::SharedPtr;
+  autoware_adapi_v1_msgs::srv::InitializeLocalization::Request;
 using InternalInitializeRequest =
-  autoware_localization_msgs::srv::InitializeLocalization::Request::SharedPtr;
-InternalInitializeRequest convert_request(const ExternalInitializeRequest & external);
+  autoware_localization_msgs::srv::InitializeLocalization::Request;
+
+void convert_request(
+  const ExternalInitializeRequest & external, InternalInitializeRequest & internal);
 
 using ExternalResponse = autoware_adapi_v1_msgs::msg::ResponseStatus;
 using InternalResponse = autoware_common_msgs::msg::ResponseStatus;
 ExternalResponse convert_response(const InternalResponse & internal);
 
 template <class ClientT, class RequestT>
-ExternalResponse convert_call(ClientT & client, RequestT & req)
+ExternalResponse convert_call(ClientT & client, const RequestT & req)
 {
-  auto future = client->async_send_request(convert_request(req));
+  auto loaned = client->borrow_loaned_request();
+  convert_request(*req, *loaned);
+  auto future = client->async_send_request(std::move(loaned));
   return convert_response(future.get()->status);
 }
 

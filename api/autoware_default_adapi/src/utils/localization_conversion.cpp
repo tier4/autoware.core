@@ -14,17 +14,14 @@
 
 #include "localization_conversion.hpp"
 
-#include <memory>
-
 namespace autoware::default_adapi::localization_conversion
 {
 
-InternalInitializeRequest convert_request(const ExternalInitializeRequest & external)
+void convert_request(
+  const ExternalInitializeRequest & external, InternalInitializeRequest & internal)
 {
-  auto internal = std::make_shared<InternalInitializeRequest::element_type>();
-  internal->pose_with_covariance = external->pose;
-  internal->method = autoware_localization_msgs::srv::InitializeLocalization::Request::AUTO;
-  return internal;
+  internal.pose_with_covariance = external.pose;
+  internal.method = autoware_localization_msgs::srv::InitializeLocalization::Request::AUTO;
 }
 
 ExternalResponse convert_response(const InternalResponse & internal)

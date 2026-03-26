@@ -15,6 +15,7 @@
 #ifndef POSE_INITIALIZER_CORE_HPP_
 #define POSE_INITIALIZER_CORE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/component_interface_specs/localization.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
@@ -47,9 +48,10 @@ private:
   using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;
 
   rclcpp::CallbackGroup::SharedPtr group_srv_;
-  rclcpp::Publisher<PoseWithCovarianceStamped>::SharedPtr pub_reset_;
-  rclcpp::Publisher<State::Message>::SharedPtr pub_state_;
-  rclcpp::Service<Initialize::Service>::SharedPtr srv_initialize_;
+  agnocast::Publisher<PoseWithCovarianceStamped>::SharedPtr pub_reset_;
+  agnocast::Publisher<State::Message>::SharedPtr pub_state_;
+  agnocast::Service<Initialize::Service>::SharedPtr srv_initialize_;
+  rclcpp::TimerBase::SharedPtr state_pub_timer_;
   State::Message state_;
   std::array<double, 36> output_pose_covariance_{};
   std::array<double, 36> gnss_particle_covariance_{};
@@ -69,8 +71,8 @@ private:
     const geometry_msgs::msg::Pose initial_pose, bool need_spin = false);
   void change_state(State::Message::_state_type state);
   void on_initialize(
-    const Initialize::Service::Request::SharedPtr req,
-    const Initialize::Service::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<const agnocast::Service<Initialize::Service>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<Initialize::Service>::ResponseT> & res);
   PoseWithCovarianceStamped get_gnss_pose();
 };
 }  // namespace autoware::pose_initializer
