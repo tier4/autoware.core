@@ -20,7 +20,7 @@ namespace autoware::adapi_adaptors
 {
 
 RoutingAdaptor::RoutingAdaptor(const rclcpp::NodeOptions & options)
-: Node("autoware_routing_adaptor", options)
+: agnocast::Node("autoware_routing_adaptor", options)
 {
   using std::placeholders::_1;
 
@@ -33,23 +33,19 @@ RoutingAdaptor::RoutingAdaptor(const rclcpp::NodeOptions & options)
   sub_waypoint_ = create_subscription<PoseStamped>(
     "~/input/waypoint", 10, std::bind(&RoutingAdaptor::on_waypoint, this, _1));
 
-  cli_reroute_ = create_client<ChangeRoutePoints::Service>(
-    ChangeRoutePoints::name, rmw_qos_profile_services_default);
-  cli_route_ =
-    create_client<SetRoutePoints::Service>(SetRoutePoints::name, rmw_qos_profile_services_default);
-  cli_clear_ =
-    create_client<ClearRoute::Service>(ClearRoute::name, rmw_qos_profile_services_default);
+  cli_reroute_ = create_client<ChangeRoutePoints::Service>(ChangeRoutePoints::name);
+  cli_route_ = create_client<SetRoutePoints::Service>(SetRoutePoints::name);
+  cli_clear_ = create_client<ClearRoute::Service>(ClearRoute::name);
 
   const auto state_qos = rclcpp::QoS{RouteState::depth}
                            .reliability(RouteState::reliability)
                            .durability(RouteState::durability);
   sub_state_ = create_subscription<RouteState::Message>(
     RouteState::name, state_qos,
-    [this](const RouteState::Message::ConstSharedPtr msg) { state_ = msg->state; });
+    [this](agnocast::ipc_shared_ptr<const RouteState::Message> msg) { state_ = msg->state; });
 
-  const auto rate = rclcpp::Rate(5.0);
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), rate.period(), std::bind(&RoutingAdaptor::on_timer, this));
+  const auto period = std::chrono::milliseconds(200);  // 5 Hz
+  timer_ = create_wall_timer(period, std::bind(&RoutingAdaptor::on_timer, this));
 
   state_ = RouteState::Message::UNKNOWN;
   route_ = std::make_shared<SetRoutePoints::Service::Request>();
@@ -69,23 +65,31 @@ void RoutingAdaptor::on_timer()
 
   if (!calling_service_) {
     if (state_ != RouteState::Message::UNSET) {
-      const auto request = std::make_shared<ClearRoute::Service::Request>();
+      auto request = cli_clear_->borrow_loaned_request();
       calling_service_ = true;
       cli_clear_->async_send_request(
-        request,
-        [this](rclcpp::Client<ClearRoute::Service>::SharedFuture) { calling_service_ = false; });
+        std::move(request),
+        [this](agnocast::Client<ClearRoute::Service>::SharedFuture) {
+          calling_service_ = false;
+        });
     } else {
       request_timing_control_ = 0;
+      auto request = cli_route_->borrow_loaned_request();
+      request->header = route_->header;
+      request->goal = route_->goal;
+      request->waypoints = route_->waypoints;
+      request->option = route_->option;
       calling_service_ = true;
       cli_route_->async_send_request(
-        route_, [this](rclcpp::Client<SetRoutePoints::Service>::SharedFuture) {
+        std::move(request),
+        [this](agnocast::Client<SetRoutePoints::Service>::SharedFuture) {
           calling_service_ = false;
         });
     }
   }
 }
 
-void RoutingAdaptor::on_fixed_goal(const PoseStamped::ConstSharedPtr pose)
+void RoutingAdaptor::on_fixed_goal(agnocast::ipc_shared_ptr<const PoseStamped> pose)
 {
   request_timing_control_ = 1;
   route_->header = pose->header;
@@ -94,7 +98,7 @@ void RoutingAdaptor::on_fixed_goal(const PoseStamped::ConstSharedPtr pose)
   route_->option.allow_goal_modification = false;
 }
 
-void RoutingAdaptor::on_rough_goal(const PoseStamped::ConstSharedPtr pose)
+void RoutingAdaptor::on_rough_goal(agnocast::ipc_shared_ptr<const PoseStamped> pose)
 {
   request_timing_control_ = 1;
   route_->header = pose->header;
@@ -103,7 +107,7 @@ void RoutingAdaptor::on_rough_goal(const PoseStamped::ConstSharedPtr pose)
   route_->option.allow_goal_modification = true;
 }
 
-void RoutingAdaptor::on_waypoint(const PoseStamped::ConstSharedPtr pose)
+void RoutingAdaptor::on_waypoint(agnocast::ipc_shared_ptr<const PoseStamped> pose)
 {
   if (route_->header.frame_id != pose->header.frame_id) {
     RCLCPP_ERROR_STREAM(get_logger(), "The waypoint frame does not match the goal.");
@@ -113,12 +117,12 @@ void RoutingAdaptor::on_waypoint(const PoseStamped::ConstSharedPtr pose)
   route_->waypoints.push_back(pose->pose);
 }
 
-void RoutingAdaptor::on_reroute(const PoseStamped::ConstSharedPtr pose)
+void RoutingAdaptor::on_reroute(agnocast::ipc_shared_ptr<const PoseStamped> pose)
 {
-  const auto route = std::make_shared<SetRoutePoints::Service::Request>();
+  auto route = cli_reroute_->borrow_loaned_request();
   route->header = pose->header;
   route->goal = pose->pose;
-  cli_reroute_->async_send_request(route);
+  cli_reroute_->async_send_request(std::move(route));
 }
 
 }  // namespace autoware::adapi_adaptors
