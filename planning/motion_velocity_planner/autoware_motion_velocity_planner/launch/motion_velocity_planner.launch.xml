@@ -15,6 +15,7 @@
   <arg name="motion_velocity_planner_param_file" default="$(find-pkg-share autoware_motion_velocity_planner)/config/motion_velocity_planner.param.yaml"/>
 
   <node pkg="autoware_motion_velocity_planner" exec="autoware_motion_velocity_planner_node" name="motion_velocity_planner" output="screen">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <!-- topic remap -->
     <remap from="~/input/trajectory" to="trajectory"/>
     <remap from="~/input/vector_map" to="/map/vector_map"/>

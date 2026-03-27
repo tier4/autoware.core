@@ -139,23 +139,6 @@ std::optional<double> calc_distance_to_front_object(
   return ego_to_obstacle_distance;
 }
 
-std::vector<uint8_t> get_target_object_type(rclcpp::Node & node, const std::string & param_prefix)
-{
-  std::unordered_map<std::string, uint8_t> types_map{
-    {"unknown", ObjectClassification::UNKNOWN}, {"car", ObjectClassification::CAR},
-    {"truck", ObjectClassification::TRUCK},     {"bus", ObjectClassification::BUS},
-    {"trailer", ObjectClassification::TRAILER}, {"motorcycle", ObjectClassification::MOTORCYCLE},
-    {"bicycle", ObjectClassification::BICYCLE}, {"pedestrian", ObjectClassification::PEDESTRIAN}};
-
-  std::vector<uint8_t> types;
-  for (const auto & type : types_map) {
-    if (node.declare_parameter<bool>(param_prefix + type.first)) {
-      types.push_back(type.second);
-    }
-  }
-  return types;
-}
-
 double calc_object_possible_max_dist_from_center(const Shape & shape)
 {
   if (shape.type == Shape::BOUNDING_BOX) {

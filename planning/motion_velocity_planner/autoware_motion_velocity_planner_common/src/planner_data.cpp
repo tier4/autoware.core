@@ -19,6 +19,7 @@
 #include "autoware/object_recognition_utils/predicted_path_utils.hpp"
 #include "autoware_lanelet2_extension/utility/query.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
@@ -221,9 +222,10 @@ std::vector<pcl::PointIndices> make_individual_cluster_indices(
   return ret_clusters;
 }  // namespace autoware::motion_velocity_planner
 
-PlannerData::PlannerData(rclcpp::Node & node)
+template <typename NodeT>
+PlannerData::PlannerData(NodeT & node)
 : no_ground_pointcloud(node),
-  vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo())
+  vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<NodeT>(node).getVehicleInfo())
 
 {
   // nearest search
@@ -482,5 +484,8 @@ PlannerData::Pointcloud::filter_and_cluster_point_clouds(
   }
   return std::make_pair(ret_pointcloud_ptr, ret_clusters);
 }
+
+template PlannerData::PlannerData(rclcpp::Node & node);
+template PlannerData::PlannerData(agnocast::Node & node);
 
 }  // namespace autoware::motion_velocity_planner

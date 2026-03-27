@@ -195,7 +195,7 @@ PolygonParam create_polygon_param(
 
 }  // namespace
 
-void ObstacleStopModule::init(rclcpp::Node & node, const std::string & module_name)
+void ObstacleStopModule::init(agnocast::Node & node, const std::string & module_name)
 {
   module_name_ = module_name;
   clock_ = node.get_clock();
@@ -237,10 +237,10 @@ void ObstacleStopModule::init(rclcpp::Node & node, const std::string & module_na
     "~/debug/processing_time_detail_ms/obstacle_stop", 1);
   // interface publisher
   objects_of_interest_marker_interface_ = std::make_unique<
-    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>(
+    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>(
     &node, "obstacle_stop");
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
       &node, "obstacle_stop");
 
   // time keeper
@@ -1261,14 +1261,26 @@ void ObstacleStopModule::publish_debug_info()
   }
   debug_marker.markers.push_back(decimated_traj_polys_marker);
 
-  debug_publisher_->publish(debug_marker);
+  {
+    auto loaned = debug_publisher_->borrow_loaned_message();
+    *loaned = debug_marker;
+    debug_publisher_->publish(std::move(loaned));
+  }
 
   // 2. virtual wall
-  virtual_wall_publisher_->publish(debug_data_ptr_->stop_wall_marker);
+  {
+    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
+    *loaned = debug_data_ptr_->stop_wall_marker;
+    virtual_wall_publisher_->publish(std::move(loaned));
+  }
 
   // 3. stop planning info
   const auto stop_debug_msg = stop_planning_debug_info_.convert_to_message(clock_->now());
-  debug_stop_planning_info_pub_->publish(stop_debug_msg);
+  {
+    auto loaned = debug_stop_planning_info_pub_->borrow_loaned_message();
+    *loaned = stop_debug_msg;
+    debug_stop_planning_info_pub_->publish(std::move(loaned));
+  }
 
   // 4. objects of interest
   objects_of_interest_marker_interface_->publishMarkerArray();

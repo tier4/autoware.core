@@ -15,6 +15,7 @@
 #ifndef PLANNER_MANAGER_HPP_
 #define PLANNER_MANAGER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
@@ -41,14 +42,15 @@ class MotionVelocityPlannerManager
 {
 public:
   MotionVelocityPlannerManager();
-  void load_module_plugin(rclcpp::Node & node, const std::string & name);
-  void unload_module_plugin(rclcpp::Node & node, const std::string & name);
+  void load_module_plugin(agnocast::Node & node, const std::string & name);
+  void unload_module_plugin(agnocast::Node & node, const std::string & name);
   void update_module_parameters(const std::vector<rclcpp::Parameter> & parameters);
   std::vector<VelocityPlanningResult> plan_velocities(
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & raw_trajectory_points,
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & smoothed_trajectory_points,
     const std::shared_ptr<const PlannerData> planner_data,
-    std::shared_ptr<autoware_utils_debug::DebugPublisher> & processing_time_publisher);
+    std::shared_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>> &
+      processing_time_publisher);
 
   RequiredSubscriptionInfo getRequiredSubscriptions() const { return required_subscriptions_; }
 

@@ -29,6 +29,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::motion_velocity_planner::utils
@@ -85,7 +86,23 @@ std::optional<T> get_obstacle_from_uuid(const std::vector<T> & obstacles, const 
   return *itr;
 }
 
-std::vector<uint8_t> get_target_object_type(rclcpp::Node & node, const std::string & param_prefix);
+template <typename NodeT>
+std::vector<uint8_t> get_target_object_type(NodeT & node, const std::string & param_prefix)
+{
+  std::unordered_map<std::string, uint8_t> types_map{
+    {"unknown", ObjectClassification::UNKNOWN}, {"car", ObjectClassification::CAR},
+    {"truck", ObjectClassification::TRUCK},     {"bus", ObjectClassification::BUS},
+    {"trailer", ObjectClassification::TRAILER}, {"motorcycle", ObjectClassification::MOTORCYCLE},
+    {"bicycle", ObjectClassification::BICYCLE}, {"pedestrian", ObjectClassification::PEDESTRIAN}};
+
+  std::vector<uint8_t> types;
+  for (const auto & type : types_map) {
+    if (node.template declare_parameter<bool>(param_prefix + type.first)) {
+      types.push_back(type.second);
+    }
+  }
+  return types;
+}
 
 /**
  * @brief compute the half of the diagonal length of the shape
