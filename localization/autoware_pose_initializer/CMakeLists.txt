@@ -19,7 +19,7 @@ find_package(agnocast_components REQUIRED)
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::pose_initializer::PoseInitializer"
   EXECUTABLE ${PROJECT_NAME}_node
-  EXECUTOR CallbackIsolatedAgnocastExecutor
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 if(BUILD_TESTING)

@@ -22,7 +22,7 @@
 
 namespace autoware::pose_initializer
 {
-GnssModule::GnssModule(rclcpp::Node * node)
+GnssModule::GnssModule(agnocast::Node * node)
 : fitter_(node),
   clock_(node->get_clock()),
   timeout_(node->declare_parameter<double>("gnss_pose_timeout"))
@@ -31,16 +31,17 @@ GnssModule::GnssModule(rclcpp::Node * node)
     "gnss_pose_cov", 1, std::bind(&GnssModule::on_pose, this, std::placeholders::_1));
 }
 
-void GnssModule::on_pose(PoseWithCovarianceStamped::ConstSharedPtr msg)
+void GnssModule::on_pose(const agnocast::ipc_shared_ptr<const PoseWithCovarianceStamped> & msg)
 {
-  pose_ = msg;
+  pose_ = *msg;
+  pose_received_ = true;
 }
 
 geometry_msgs::msg::PoseWithCovarianceStamped GnssModule::get_pose()
 {
   using Initialize = autoware::component_interface_specs::localization::Initialize;
 
-  if (!pose_) {
+  if (!pose_received_) {
     autoware_adapi_v1_msgs::msg::ResponseStatus respose_status;
     respose_status.success = false;
     respose_status.code = Initialize::Service::Response::ERROR_GNSS;
@@ -48,7 +49,7 @@ geometry_msgs::msg::PoseWithCovarianceStamped GnssModule::get_pose()
     throw respose_status;
   }
 
-  const auto elapsed = rclcpp::Time(pose_->header.stamp) - clock_->now();
+  const auto elapsed = rclcpp::Time(pose_.header.stamp) - clock_->now();
   if (timeout_ < elapsed.seconds()) {
     autoware_adapi_v1_msgs::msg::ResponseStatus respose_status;
     respose_status.success = false;
@@ -57,7 +58,7 @@ geometry_msgs::msg::PoseWithCovarianceStamped GnssModule::get_pose()
     throw respose_status;
   }
 
-  PoseWithCovarianceStamped pose = *pose_;
+  PoseWithCovarianceStamped pose = pose_;
   const auto fitted = fitter_.fit(pose.pose.pose.position, pose.header.frame_id);
   if (fitted) {
     pose.pose.pose.position = fitted.value();

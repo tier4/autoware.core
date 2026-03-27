@@ -16,9 +16,10 @@
 
 namespace autoware::pose_initializer
 {
-PoseErrorCheckModule::PoseErrorCheckModule(rclcpp::Node * node) : node_(node)
+PoseErrorCheckModule::PoseErrorCheckModule(agnocast::Node * node)
+: logger_(node->get_logger())
 {
-  pose_error_threshold_ = node_->declare_parameter<double>("pose_error_threshold");
+  pose_error_threshold_ = node->declare_parameter<double>("pose_error_threshold");
 }
 
 bool PoseErrorCheckModule::check_pose_error(
@@ -30,7 +31,7 @@ bool PoseErrorCheckModule::check_pose_error(
   error_2d = std::sqrt(std::pow(diff_pose_x, 2) + std::pow(diff_pose_y, 2));
 
   if (pose_error_threshold_ <= error_2d) {
-    RCLCPP_INFO(node_->get_logger(), "Pose Error is Large. Error is %f", error_2d);
+    RCLCPP_INFO(logger_, "Pose Error is Large. Error is %f", error_2d);
     return false;
   }
 

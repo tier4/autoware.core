@@ -25,9 +25,9 @@ namespace autoware::pose_initializer
 {
 using Initialize = autoware::component_interface_specs::localization::Initialize;
 
-NdtLocalizationTriggerModule::NdtLocalizationTriggerModule(rclcpp::Node * node) : node_(node)
+NdtLocalizationTriggerModule::NdtLocalizationTriggerModule(agnocast::Node * node) : node_(node)
 {
-  client_ndt_trigger_ = agnocast::create_client<SetBool>(node_, "ndt_trigger_node");
+  client_ndt_trigger_ = node_->create_client<SetBool>("ndt_trigger_node");
 }
 
 void NdtLocalizationTriggerModule::wait_for_service()
@@ -38,7 +38,7 @@ void NdtLocalizationTriggerModule::wait_for_service()
   RCLCPP_INFO(node_->get_logger(), "NDT triggering service is available!");
 }
 
-void NdtLocalizationTriggerModule::send_request(bool flag, bool need_spin) const
+void NdtLocalizationTriggerModule::send_request(bool flag) const
 {
   auto req = client_ndt_trigger_->borrow_loaned_request();
   std::string command_name;
@@ -58,10 +58,6 @@ void NdtLocalizationTriggerModule::send_request(bool flag, bool need_spin) const
   }
 
   auto future_ndt = client_ndt_trigger_->async_send_request(std::move(req));
-
-  if (need_spin) {
-    rclcpp::spin_until_future_complete(node_->get_node_base_interface(), future_ndt);
-  }
 
   if (future_ndt.get()->success) {
     RCLCPP_INFO(node_->get_logger(), "NDT %s succeeded", command_name.c_str());

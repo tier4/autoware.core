@@ -16,7 +16,6 @@
 #define LOCALIZATION_MODULE_HPP_
 
 #include <agnocast/agnocast.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_localization_msgs/srv/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
@@ -33,7 +32,7 @@ private:
   using RequestPoseAlignment = autoware_internal_localization_msgs::srv::PoseWithCovarianceStamped;
 
 public:
-  LocalizationModule(rclcpp::Node * node, const std::string & service_name);
+  LocalizationModule(agnocast::Node * node, const std::string & service_name);
   std::tuple<PoseWithCovarianceStamped, bool> align_pose(const PoseWithCovarianceStamped & pose);
 
 private:

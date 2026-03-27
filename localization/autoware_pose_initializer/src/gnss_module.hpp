@@ -15,8 +15,8 @@
 #ifndef GNSS_MODULE_HPP_
 #define GNSS_MODULE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/map_height_fitter/map_height_fitter.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
@@ -28,16 +28,17 @@ private:
   using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;
 
 public:
-  explicit GnssModule(rclcpp::Node * node);
+  explicit GnssModule(agnocast::Node * node);
   PoseWithCovarianceStamped get_pose();
 
 private:
-  void on_pose(PoseWithCovarianceStamped::ConstSharedPtr msg);
+  void on_pose(const agnocast::ipc_shared_ptr<const PoseWithCovarianceStamped> & msg);
 
   autoware::map_height_fitter::MapHeightFitter fitter_;
   rclcpp::Clock::SharedPtr clock_;
-  rclcpp::Subscription<PoseWithCovarianceStamped>::SharedPtr sub_gnss_pose_;
-  PoseWithCovarianceStamped::ConstSharedPtr pose_;
+  agnocast::Subscription<PoseWithCovarianceStamped>::SharedPtr sub_gnss_pose_;
+  PoseWithCovarianceStamped pose_;
+  bool pose_received_{false};
   double timeout_;
 };
 }  // namespace autoware::pose_initializer

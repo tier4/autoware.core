@@ -19,7 +19,6 @@
 #include <autoware/component_interface_specs/localization.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/localization_initialization_state.hpp>
 #include <autoware_internal_localization_msgs/srv/initialize_localization.hpp>
@@ -37,7 +36,7 @@ class GnssModule;
 class EkfLocalizationTriggerModule;
 class NdtLocalizationTriggerModule;
 
-class PoseInitializer : public rclcpp::Node
+class PoseInitializer : public agnocast::Node
 {
 public:
   explicit PoseInitializer(const rclcpp::NodeOptions & options);
@@ -51,7 +50,8 @@ private:
   agnocast::Publisher<PoseWithCovarianceStamped>::SharedPtr pub_reset_;
   agnocast::Publisher<State::Message>::SharedPtr pub_state_;
   agnocast::Service<Initialize::Service>::SharedPtr srv_initialize_;
-  rclcpp::TimerBase::SharedPtr state_pub_timer_;
+  agnocast::TimerBase::SharedPtr state_pub_timer_;
+  agnocast::TimerBase::SharedPtr initial_pose_timer_;
   State::Message state_;
   std::array<double, 36> output_pose_covariance_{};
   std::array<double, 36> gnss_particle_covariance_{};
@@ -62,13 +62,14 @@ private:
   std::unique_ptr<PoseErrorCheckModule> pose_error_check_;
   std::unique_ptr<EkfLocalizationTriggerModule> ekf_localization_trigger_;
   std::unique_ptr<NdtLocalizationTriggerModule> ndt_localization_trigger_;
-  std::unique_ptr<autoware_utils_logging::LoggerLevelConfigure> logger_configure_;
-  std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_pose_reliable_;
+  std::unique_ptr<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>
+    logger_configure_;
+  std::unique_ptr<autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>>
+    diagnostics_pose_reliable_;
   double stop_check_duration_;
 
-  void change_node_trigger(bool flag, bool need_spin = false);
-  void set_user_defined_initial_pose(
-    const geometry_msgs::msg::Pose initial_pose, bool need_spin = false);
+  void change_node_trigger(bool flag);
+  void set_user_defined_initial_pose(const geometry_msgs::msg::Pose initial_pose);
   void change_state(State::Message::_state_type state);
   void on_initialize(
     const agnocast::ipc_shared_ptr<const agnocast::Service<Initialize::Service>::RequestT> & req,

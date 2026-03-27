@@ -16,14 +16,15 @@
 
 namespace autoware::pose_initializer
 {
-StopCheckModule::StopCheckModule(rclcpp::Node * node, double buffer_duration)
+StopCheckModule::StopCheckModule(agnocast::Node * node, double buffer_duration)
 : VehicleStopCheckerBase(node, buffer_duration)
 {
   sub_twist_ = node->create_subscription<TwistWithCovarianceStamped>(
     "stop_check_twist", 1, std::bind(&StopCheckModule::on_twist, this, std::placeholders::_1));
 }
 
-void StopCheckModule::on_twist(TwistWithCovarianceStamped::ConstSharedPtr msg)
+void StopCheckModule::on_twist(
+  const agnocast::ipc_shared_ptr<const TwistWithCovarianceStamped> & msg)
 {
   TwistStamped twist;
   twist.header = msg->header;

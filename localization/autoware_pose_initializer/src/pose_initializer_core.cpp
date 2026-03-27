@@ -31,25 +31,26 @@
 namespace autoware::pose_initializer
 {
 PoseInitializer::PoseInitializer(const rclcpp::NodeOptions & options)
-: rclcpp::Node("pose_initializer", options),
+: agnocast::Node("pose_initializer", options),
   group_srv_(create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive))
 {
   rclcpp::QoS qos_state(1);
   qos_state.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
   qos_state.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
-  pub_state_ = agnocast::create_publisher<State::Message>(
-    this, State::name, autoware::component_interface_specs::get_qos<State>());
-  srv_initialize_ = agnocast::create_service<Initialize::Service>(
-    this, Initialize::name,
+  pub_state_ = create_publisher<State::Message>(
+    State::name, autoware::component_interface_specs::get_qos<State>());
+  srv_initialize_ = create_service<Initialize::Service>(
+    Initialize::name,
     std::bind(
       &PoseInitializer::on_initialize, this, std::placeholders::_1, std::placeholders::_2),
     rclcpp::ServicesQoS(), group_srv_);
-  pub_reset_ = agnocast::create_publisher<PoseWithCovarianceStamped>(this, "pose_reset", 1);
+  pub_reset_ = create_publisher<PoseWithCovarianceStamped>("pose_reset", 1);
 
   output_pose_covariance_ = get_covariance_parameter(this, "output_pose_covariance");
   gnss_particle_covariance_ = get_covariance_parameter(this, "gnss_particle_covariance");
-  diagnostics_pose_reliable_ = std::make_unique<autoware_utils_diagnostics::DiagnosticsInterface>(
-    this, "pose_initializer_status");
+  diagnostics_pose_reliable_ =
+    std::make_unique<autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>>(
+      this, "pose_initializer_status");
 
   if (declare_parameter<bool>("ekf_enabled")) {
     ekf_localization_trigger_ = std::make_unique<EkfLocalizationTriggerModule>(this);
@@ -65,14 +66,14 @@ PoseInitializer::PoseInitializer(const rclcpp::NodeOptions & options)
     ndt_localization_trigger_ = std::make_unique<NdtLocalizationTriggerModule>(this);
   }
   if (declare_parameter<bool>("stop_check_enabled")) {
-    // Add 1.0 sec margin for twist buffer.
     stop_check_duration_ = declare_parameter<double>("stop_check_duration");
     stop_check_ = std::make_unique<StopCheckModule>(this, stop_check_duration_ + 1.0);
   }
   if (declare_parameter<bool>("pose_error_check_enabled")) {
     pose_error_check_ = std::make_unique<PoseErrorCheckModule>(this);
   }
-  logger_configure_ = std::make_unique<autoware_utils_logging::LoggerLevelConfigure>(this);
+  logger_configure_ =
+    std::make_unique<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>(this);
 
   change_state(State::Message::UNINITIALIZED);
 
@@ -107,7 +108,12 @@ PoseInitializer::PoseInitializer(const rclcpp::NodeOptions & options)
     initial_pose.orientation.z = initial_pose_array[5];
     initial_pose.orientation.w = initial_pose_array[6];
 
-    set_user_defined_initial_pose(initial_pose, true);
+    // Defer to a one-shot timer so the executor is spinning when service calls are made
+    initial_pose_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(100), [this, initial_pose]() {
+        initial_pose_timer_->cancel();
+        set_user_defined_initial_pose(initial_pose);
+      });
   }
 }
 
@@ -120,30 +126,27 @@ void PoseInitializer::change_state(State::Message::_state_type state)
   pub_state_->publish(std::move(loaned));
 }
 
-// To execute in the constructor, you need to call ros spin.
-// Conversely, ros spin should not be called elsewhere
-void PoseInitializer::change_node_trigger(bool flag, bool need_spin)
+void PoseInitializer::change_node_trigger(bool flag)
 {
   try {
     if (ekf_localization_trigger_) {
       ekf_localization_trigger_->wait_for_service();
-      ekf_localization_trigger_->send_request(flag, need_spin);
+      ekf_localization_trigger_->send_request(flag);
     }
     if (ndt_localization_trigger_) {
       ndt_localization_trigger_->wait_for_service();
-      ndt_localization_trigger_->send_request(flag, need_spin);
+      ndt_localization_trigger_->send_request(flag);
     }
   } catch (const autoware_adapi_v1_msgs::msg::ResponseStatus & error) {
     throw;
   }
 }
 
-void PoseInitializer::set_user_defined_initial_pose(
-  const geometry_msgs::msg::Pose initial_pose, bool need_spin)
+void PoseInitializer::set_user_defined_initial_pose(const geometry_msgs::msg::Pose initial_pose)
 {
   try {
     change_state(State::Message::INITIALIZING);
-    change_node_trigger(false, need_spin);
+    change_node_trigger(false);
 
     PoseWithCovarianceStamped pose;
     pose.header.frame_id = "map";
@@ -154,7 +157,7 @@ void PoseInitializer::set_user_defined_initial_pose(
     *loaned_reset = pose;
     pub_reset_->publish(std::move(loaned_reset));
 
-    change_node_trigger(true, need_spin);
+    change_node_trigger(true);
     change_state(State::Message::INITIALIZED);
 
     RCLCPP_INFO(get_logger(), "Set user defined initial pose");
@@ -180,7 +183,7 @@ void PoseInitializer::on_initialize(
 
     if (req->method == Initialize::Service::Request::AUTO) {
       change_state(State::Message::INITIALIZING);
-      change_node_trigger(false, false);
+      change_node_trigger(false);
 
       auto pose =
         req->pose_with_covariance.empty() ? get_gnss_pose() : req->pose_with_covariance.front();
@@ -188,14 +191,11 @@ void PoseInitializer::on_initialize(
       if (ndt_) {
         std::tie(pose, reliable) = ndt_->align_pose(pose);
       } else if (yabloc_) {
-        // If both the NDT and YabLoc initializer are enabled, prioritize NDT as it offers more
-        // accuracy pose.
         std::tie(pose, reliable) = yabloc_->align_pose(pose);
       }
 
       diagnostics_pose_reliable_->clear();
 
-      // check pose error between gnss pose and initial pose result
       if (pose_error_check_ && gnss_) {
         const auto latest_gnss_pose = get_gnss_pose();
 
@@ -213,7 +213,6 @@ void PoseInitializer::on_initialize(
             diagnostic_msgs::msg::DiagnosticStatus::WARN, message.str());
         }
       }
-      // check initial pose result and publish diagnostics
       diagnostics_pose_reliable_->add_key_value("is_initial_pose_reliable", reliable);
       if (!reliable) {
         std::stringstream message;
@@ -228,7 +227,7 @@ void PoseInitializer::on_initialize(
       *loaned_reset = pose;
       pub_reset_->publish(std::move(loaned_reset));
 
-      change_node_trigger(true, false);
+      change_node_trigger(true);
       res->status.success = true;
       change_state(State::Message::INITIALIZED);
 
@@ -245,7 +244,7 @@ void PoseInitializer::on_initialize(
         throw respose_status;
       }
       auto pose = req->pose_with_covariance.front().pose.pose;
-      set_user_defined_initial_pose(pose, false);
+      set_user_defined_initial_pose(pose);
       res->status.success = true;
 
     } else {

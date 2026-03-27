@@ -27,9 +27,9 @@ namespace autoware::pose_initializer
 using Initialize = autoware::component_interface_specs::localization::Initialize;
 using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;
 
-LocalizationModule::LocalizationModule(rclcpp::Node * node, const std::string & service_name)
+LocalizationModule::LocalizationModule(agnocast::Node * node, const std::string & service_name)
 : logger_(node->get_logger()),
-  cli_align_(agnocast::create_client<RequestPoseAlignment>(node, service_name))
+  cli_align_(node->create_client<RequestPoseAlignment>(service_name))
 {
 }
 

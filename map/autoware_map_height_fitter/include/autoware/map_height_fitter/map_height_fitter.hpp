@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__MAP_HEIGHT_FITTER__MAP_HEIGHT_FITTER_HPP_
 #define AUTOWARE__MAP_HEIGHT_FITTER__MAP_HEIGHT_FITTER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/point.hpp>
@@ -32,6 +33,7 @@ class MapHeightFitter final
 {
 public:
   explicit MapHeightFitter(rclcpp::Node * node);
+  explicit MapHeightFitter(agnocast::Node * node);
   ~MapHeightFitter();
   MapHeightFitter(const MapHeightFitter &) = delete;
   MapHeightFitter & operator=(const MapHeightFitter &) = delete;
@@ -39,9 +41,10 @@ public:
   MapHeightFitter & operator=(MapHeightFitter &&) = delete;
   std::optional<Point> fit(const Point & position, const std::string & frame);
 
+  struct ImplBase;
+
 private:
-  struct Impl;
-  std::unique_ptr<Impl> impl_;
+  std::unique_ptr<ImplBase> impl_;
 };
 
 }  // namespace autoware::map_height_fitter

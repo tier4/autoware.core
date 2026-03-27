@@ -25,9 +25,9 @@ namespace autoware::pose_initializer
 {
 using Initialize = autoware::component_interface_specs::localization::Initialize;
 
-EkfLocalizationTriggerModule::EkfLocalizationTriggerModule(rclcpp::Node * node) : node_(node)
+EkfLocalizationTriggerModule::EkfLocalizationTriggerModule(agnocast::Node * node) : node_(node)
 {
-  client_ekf_trigger_ = agnocast::create_client<SetBool>(node_, "ekf_trigger_node");
+  client_ekf_trigger_ = node_->create_client<SetBool>("ekf_trigger_node");
 }
 
 void EkfLocalizationTriggerModule::wait_for_service()
@@ -38,7 +38,7 @@ void EkfLocalizationTriggerModule::wait_for_service()
   RCLCPP_INFO(node_->get_logger(), "EKF triggering service is available!");
 }
 
-void EkfLocalizationTriggerModule::send_request(bool flag, bool need_spin) const
+void EkfLocalizationTriggerModule::send_request(bool flag) const
 {
   auto req = client_ekf_trigger_->borrow_loaned_request();
   std::string command_name;
@@ -58,10 +58,6 @@ void EkfLocalizationTriggerModule::send_request(bool flag, bool need_spin) const
   }
 
   auto future_ekf = client_ekf_trigger_->async_send_request(std::move(req));
-
-  if (need_spin) {
-    rclcpp::spin_until_future_complete(node_->get_node_base_interface(), future_ekf);
-  }
 
   if (future_ekf.get()->success) {
     RCLCPP_INFO(node_->get_logger(), "EKF %s succeeded", command_name.c_str());

@@ -15,8 +15,8 @@
 #ifndef STOP_CHECK_MODULE_HPP_
 #define STOP_CHECK_MODULE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
@@ -26,13 +26,13 @@ namespace autoware::pose_initializer
 class StopCheckModule : public autoware::motion_utils::VehicleStopCheckerBase
 {
 public:
-  StopCheckModule(rclcpp::Node * node, double buffer_duration);
+  StopCheckModule(agnocast::Node * node, double buffer_duration);
 
 private:
   using TwistWithCovarianceStamped = geometry_msgs::msg::TwistWithCovarianceStamped;
   using TwistStamped = geometry_msgs::msg::TwistStamped;
-  rclcpp::Subscription<TwistWithCovarianceStamped>::SharedPtr sub_twist_;
-  void on_twist(TwistWithCovarianceStamped::ConstSharedPtr msg);
+  agnocast::Subscription<TwistWithCovarianceStamped>::SharedPtr sub_twist_;
+  void on_twist(const agnocast::ipc_shared_ptr<const TwistWithCovarianceStamped> & msg);
 };
 }  // namespace autoware::pose_initializer
 

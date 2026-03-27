@@ -15,7 +15,7 @@
 #ifndef POSE_ERROR_CHECK_MODULE_HPP_
 #define POSE_ERROR_CHECK_MODULE_HPP_
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <geometry_msgs/msg/pose.hpp>
 
@@ -24,13 +24,13 @@ namespace autoware::pose_initializer
 class PoseErrorCheckModule
 {
 public:
-  explicit PoseErrorCheckModule(rclcpp::Node * node);
+  explicit PoseErrorCheckModule(agnocast::Node * node);
   bool check_pose_error(
     const geometry_msgs::msg::Pose & reference_pose, const geometry_msgs::msg::Pose & result_pose,
     double & error_2d);
 
 private:
-  rclcpp::Node * node_;
+  rclcpp::Logger logger_;
   double pose_error_threshold_;
 };
 }  // namespace autoware::pose_initializer

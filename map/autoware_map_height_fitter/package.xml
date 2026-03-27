@@ -24,6 +24,7 @@
   <depend>geometry_msgs</depend>
   <depend>libpcl-common</depend>
   <depend>pcl_conversions</depend>
+  <depend>agnocastlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
