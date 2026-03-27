@@ -19,7 +19,7 @@
 namespace autoware::vehicle_velocity_converter
 {
 VehicleVelocityConverter::VehicleVelocityConverter(const rclcpp::NodeOptions & options)
-: rclcpp::Node("vehicle_velocity_converter", options),
+: agnocast::Node("vehicle_velocity_converter", options),
   frame_id_(declare_parameter<std::string>("frame_id")),
   stddev_vx_(declare_parameter<double>("velocity_stddev_xx")),
   stddev_wz_(declare_parameter<double>("angular_velocity_stddev_zz")),
@@ -29,12 +29,12 @@ VehicleVelocityConverter::VehicleVelocityConverter(const rclcpp::NodeOptions & o
     "velocity_status", rclcpp::QoS{100},
     std::bind(&VehicleVelocityConverter::callback_velocity_report, this, std::placeholders::_1));
 
-  twist_with_covariance_pub_ = agnocast::create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>(
-    this, "twist_with_covariance", rclcpp::QoS{10});
+  twist_with_covariance_pub_ =
+    create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>("twist_with_covariance", rclcpp::QoS{10});
 }
 
 void VehicleVelocityConverter::callback_velocity_report(
-  const autoware_vehicle_msgs::msg::VelocityReport::SharedPtr msg)
+  const agnocast::ipc_shared_ptr<const autoware_vehicle_msgs::msg::VelocityReport> & msg)
 {
   if (msg->header.frame_id != frame_id_) {
     RCLCPP_WARN(get_logger(), "frame_id is not base_link.");

@@ -28,15 +28,16 @@
 
 namespace autoware::vehicle_velocity_converter
 {
-class VehicleVelocityConverter : public rclcpp::Node
+class VehicleVelocityConverter : public agnocast::Node
 {
 public:
   explicit VehicleVelocityConverter(const rclcpp::NodeOptions & options);
 
 private:
-  void callback_velocity_report(const autoware_vehicle_msgs::msg::VelocityReport::SharedPtr msg);
+  void callback_velocity_report(
+    const agnocast::ipc_shared_ptr<const autoware_vehicle_msgs::msg::VelocityReport> & msg);
 
-  rclcpp::Subscription<autoware_vehicle_msgs::msg::VelocityReport>::SharedPtr vehicle_report_sub_;
+  agnocast::Subscription<autoware_vehicle_msgs::msg::VelocityReport>::SharedPtr vehicle_report_sub_;
 
   agnocast::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr
     twist_with_covariance_pub_;

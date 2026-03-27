@@ -27,8 +27,8 @@
 namespace autoware::gnss_poser
 {
 GNSSPoser::GNSSPoser(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("gnss_poser", node_options),
-  tf2_listener_(tf2_buffer_),
+: agnocast::Node("gnss_poser", node_options),
+  tf2_buffer_(get_clock()),
   tf2_broadcaster_(*this),
   base_frame_(declare_parameter<std::string>("base_frame")),
   gnss_base_frame_(declare_parameter<std::string>("gnss_base_frame")),
@@ -38,6 +38,8 @@ GNSSPoser::GNSSPoser(const rclcpp::NodeOptions & node_options)
     std::make_shared<autoware_sensing_msgs::msg::GnssInsOrientationStamped>()),
   gnss_pose_pub_method_(static_cast<int>(declare_parameter<int>("gnss_pose_pub_method")))
 {
+  tf2_listener_ = std::make_unique<agnocast::TransformListener>(tf2_buffer_, *this);
+
   // Subscribe to map_projector_info topic
   sub_map_projector_info_ = create_subscription<autoware_map_msgs::msg::MapProjectorInfo>(
     "/map/map_projector_info", rclcpp::QoS{1}.transient_local(),
@@ -57,11 +59,11 @@ GNSSPoser::GNSSPoser(const rclcpp::NodeOptions & node_options)
       std::bind(&GNSSPoser::callback_gnss_ins_orientation_stamped, this, std::placeholders::_1));
 
   pose_pub_ =
-    agnocast::create_publisher<geometry_msgs::msg::PoseStamped>(this, "gnss_pose", rclcpp::QoS{1});
-  pose_cov_pub_ = agnocast::create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
-    this, "gnss_pose_cov", rclcpp::QoS{1});
-  fixed_pub_ = agnocast::create_publisher<autoware_internal_debug_msgs::msg::BoolStamped>(
-    this, "gnss_fixed", rclcpp::QoS{1});
+    create_publisher<geometry_msgs::msg::PoseStamped>("gnss_pose", rclcpp::QoS{1});
+  pose_cov_pub_ =
+    create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("gnss_pose_cov", rclcpp::QoS{1});
+  fixed_pub_ =
+    create_publisher<autoware_internal_debug_msgs::msg::BoolStamped>("gnss_fixed", rclcpp::QoS{1});
 
   // Set msg_gnss_ins_orientation_stamped_ with temporary values (not to publish zero value
   // covariances)
@@ -71,14 +73,14 @@ GNSSPoser::GNSSPoser(const rclcpp::NodeOptions & node_options)
 }
 
 void GNSSPoser::callback_map_projector_info(
-  const autoware_map_msgs::msg::MapProjectorInfo::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::MapProjectorInfo> & msg)
 {
   projector_info_ = *msg;
   received_map_projector_info_ = true;
 }
 
 void GNSSPoser::callback_nav_sat_fix(
-  const sensor_msgs::msg::NavSatFix::ConstSharedPtr nav_sat_fix_msg_ptr)
+  const agnocast::ipc_shared_ptr<const sensor_msgs::msg::NavSatFix> & nav_sat_fix_msg_ptr)
 {
   // Return immediately if map_projector_info has not been received yet.
   if (!received_map_projector_info_) {
@@ -212,7 +214,7 @@ void GNSSPoser::callback_nav_sat_fix(
 }
 
 void GNSSPoser::callback_gnss_ins_orientation_stamped(
-  const autoware_sensing_msgs::msg::GnssInsOrientationStamped::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const autoware_sensing_msgs::msg::GnssInsOrientationStamped> & msg)
 {
   *msg_gnss_ins_orientation_stamped_ = *msg;
 }

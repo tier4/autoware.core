@@ -15,6 +15,9 @@
 #define AUTOWARE__GNSS_POSER__GNSS_POSER_NODE_HPP_
 
 #include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_broadcaster.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/transform_datatypes.hpp>
 
@@ -28,24 +31,24 @@
 
 #include <boost/circular_buffer.hpp>
 
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
-
+#include <memory>
 #include <string>
 
 namespace autoware::gnss_poser
 {
-class GNSSPoser : public rclcpp::Node
+class GNSSPoser : public agnocast::Node
 {
 public:
   explicit GNSSPoser(const rclcpp::NodeOptions & node_options);
 
 private:
   void callback_map_projector_info(
-    const autoware_map_msgs::msg::MapProjectorInfo::ConstSharedPtr msg);
-  void callback_nav_sat_fix(const sensor_msgs::msg::NavSatFix::ConstSharedPtr nav_sat_fix_msg_ptr);
+    const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::MapProjectorInfo> & msg);
+  void callback_nav_sat_fix(
+    const agnocast::ipc_shared_ptr<const sensor_msgs::msg::NavSatFix> & nav_sat_fix_msg_ptr);
   void callback_gnss_ins_orientation_stamped(
-    const autoware_sensing_msgs::msg::GnssInsOrientationStamped::ConstSharedPtr msg);
+    const agnocast::ipc_shared_ptr<const autoware_sensing_msgs::msg::GnssInsOrientationStamped> &
+      msg);
 
   static bool is_fixed(const sensor_msgs::msg::NavSatStatus & nav_sat_status_msg);
   static bool can_get_covariance(const sensor_msgs::msg::NavSatFix & nav_sat_fix_msg);
@@ -68,13 +71,13 @@ private:
     const std::string & frame_id, const std::string & child_frame_id,
     const geometry_msgs::msg::PoseStamped & pose_msg);
 
-  tf2::BufferCore tf2_buffer_;
-  tf2_ros::TransformListener tf2_listener_;
-  tf2_ros::TransformBroadcaster tf2_broadcaster_;
+  agnocast::Buffer tf2_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf2_listener_;
+  agnocast::TransformBroadcaster tf2_broadcaster_;
 
-  rclcpp::Subscription<autoware_map_msgs::msg::MapProjectorInfo>::SharedPtr sub_map_projector_info_;
-  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr nav_sat_fix_sub_;
-  rclcpp::Subscription<autoware_sensing_msgs::msg::GnssInsOrientationStamped>::SharedPtr
+  agnocast::Subscription<autoware_map_msgs::msg::MapProjectorInfo>::SharedPtr sub_map_projector_info_;
+  agnocast::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr nav_sat_fix_sub_;
+  agnocast::Subscription<autoware_sensing_msgs::msg::GnssInsOrientationStamped>::SharedPtr
     autoware_orientation_sub_;
 
   agnocast::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
