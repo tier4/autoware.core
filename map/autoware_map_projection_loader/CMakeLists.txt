@@ -17,6 +17,14 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTOR SingleThreadedExecutor
 )
 
+find_package(agnocast_components REQUIRED)
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "autoware::map_projection_loader::MapProjectionLoader"
+  EXECUTABLE ${PROJECT_NAME}_agnocast_node
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
 target_link_libraries(${PROJECT_NAME} yaml-cpp)
 
 function(add_testcase filepath)

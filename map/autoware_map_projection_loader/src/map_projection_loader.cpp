@@ -118,7 +118,7 @@ autoware_map_msgs::msg::MapProjectorInfo load_map_projector_info(
 }
 
 MapProjectionLoader::MapProjectionLoader(const rclcpp::NodeOptions & options)
-: rclcpp::Node("map_projection_loader", options)
+: agnocast::Node("map_projection_loader", options)
 {
   const std::string yaml_filename = this->declare_parameter<std::string>("map_projector_info_path");
   const std::string lanelet2_map_filename =
@@ -130,7 +130,9 @@ MapProjectionLoader::MapProjectionLoader(const rclcpp::NodeOptions & options)
   // Publish the message
   publisher_ = this->create_publisher<MapProjectorInfo::Message>(
     MapProjectorInfo::name, autoware::component_interface_specs::get_qos<MapProjectorInfo>());
-  publisher_->publish(msg);
+  auto loaned_msg = publisher_->borrow_loaned_message();
+  *loaned_msg = msg;
+  publisher_->publish(std::move(loaned_msg));
 }
 }  // namespace autoware::map_projection_loader
 

@@ -4,7 +4,8 @@
   <arg name="map_projector_info_path" description="Path to the yaml file"/>
   <arg name="lanelet2_map_path" description="Path to the lanelet2 map file"/>
 
-  <node pkg="autoware_map_projection_loader" exec="autoware_map_projection_loader_node" output="both">
+  <node pkg="autoware_map_projection_loader" exec="autoware_map_projection_loader_agnocast_node" output="both">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <param from="$(var param_path)" allow_substs="true"/>
   </node>
 </launch>
