@@ -22,14 +22,14 @@
 namespace autoware::map_loader
 {
 DifferentialMapLoaderModule::DifferentialMapLoaderModule(
-  rclcpp::Node * node, std::map<std::string, PCDFileMetadata> pcd_file_metadata_dict)
+  agnocast::Node * node, std::map<std::string, PCDFileMetadata> pcd_file_metadata_dict)
 : logger_(node->get_logger()), all_pcd_file_metadata_dict_(std::move(pcd_file_metadata_dict))
 {
   agnocast_callback_group_ =
     node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   agnocast_get_differential_pcd_maps_service_ =
-    agnocast::create_service<GetDifferentialPointCloudMap>(
-      node, "service/get_differential_pcd_map",
+    node->create_service<GetDifferentialPointCloudMap>(
+      "service/get_differential_pcd_map",
       std::bind(
         &DifferentialMapLoaderModule::on_agnocast_service_get_differential_point_cloud_map, this,
         std::placeholders::_1, std::placeholders::_2),

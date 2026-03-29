@@ -45,7 +45,7 @@ bool is_pcd_file(const std::string & p)
 }  // namespace
 
 PointCloudMapLoaderNode::PointCloudMapLoaderNode(const rclcpp::NodeOptions & options)
-: Node("pointcloud_map_loader", options)
+: agnocast::Node("pointcloud_map_loader", options)
 {
   const auto pcd_paths =
     get_pcd_paths(declare_parameter<std::vector<std::string>>("pcd_paths_or_directory"));

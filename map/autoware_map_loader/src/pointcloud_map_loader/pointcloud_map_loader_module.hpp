@@ -15,7 +15,7 @@
 #ifndef POINTCLOUD_MAP_LOADER__POINTCLOUD_MAP_LOADER_MODULE_HPP_
 #define POINTCLOUD_MAP_LOADER__POINTCLOUD_MAP_LOADER_MODULE_HPP_
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
@@ -34,12 +34,12 @@ class PointcloudMapLoaderModule
 {
 public:
   explicit PointcloudMapLoaderModule(
-    rclcpp::Node * node, const std::vector<std::string> & pcd_paths,
+    agnocast::Node * node, const std::vector<std::string> & pcd_paths,
     const std::string & publisher_name, const bool use_downsample);
 
 private:
   rclcpp::Logger logger_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pointcloud_map_;
+  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pointcloud_map_;
 
   [[nodiscard]] sensor_msgs::msg::PointCloud2 load_pcd_files(
     const std::vector<std::string> & pcd_paths, const boost::optional<float> leaf_size) const;

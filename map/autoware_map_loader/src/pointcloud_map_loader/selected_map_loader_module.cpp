@@ -47,27 +47,33 @@ autoware_map_msgs::msg::PointCloudMapMetaData create_metadata(
 }
 
 SelectedMapLoaderModule::SelectedMapLoaderModule(
-  rclcpp::Node * node, std::map<std::string, PCDFileMetadata> pcd_file_metadata_dict)
+  agnocast::Node * node, std::map<std::string, PCDFileMetadata> pcd_file_metadata_dict)
 : logger_(node->get_logger()), all_pcd_file_metadata_dict_(std::move(pcd_file_metadata_dict))
 {
-  get_selected_pcd_maps_service_ = node->create_service<GetSelectedPointCloudMap>(
+  agnocast_callback_group_ =
+    node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  agnocast_get_selected_pcd_maps_service_ = node->create_service<GetSelectedPointCloudMap>(
     "service/get_selected_pcd_map",
     std::bind(
-      &SelectedMapLoaderModule::on_service_get_selected_point_cloud_map, this,
-      std::placeholders::_1, std::placeholders::_2));
+      &SelectedMapLoaderModule::on_agnocast_service_get_selected_point_cloud_map, this,
+      std::placeholders::_1, std::placeholders::_2),
+    rclcpp::ServicesQoS(), agnocast_callback_group_);
 
   // publish the map metadata
   rclcpp::QoS durable_qos{1};
   durable_qos.transient_local();
   pub_metadata_ = node->create_publisher<autoware_map_msgs::msg::PointCloudMapMetaData>(
     "output/pointcloud_map_metadata", durable_qos);
-  pub_metadata_->publish(create_metadata(all_pcd_file_metadata_dict_));
+  auto loaned_msg = pub_metadata_->borrow_loaned_message();
+  *loaned_msg = create_metadata(all_pcd_file_metadata_dict_);
+  pub_metadata_->publish(std::move(loaned_msg));
 }
 
-bool SelectedMapLoaderModule::on_service_get_selected_point_cloud_map(
-  GetSelectedPointCloudMap::Request::SharedPtr req,
-  GetSelectedPointCloudMap::Response::SharedPtr res) const
+void SelectedMapLoaderModule::on_agnocast_service_get_selected_point_cloud_map(
+  const agnocast::ipc_shared_ptr<AgnocastServiceT::RequestT> & req,
+  agnocast::ipc_shared_ptr<AgnocastServiceT::ResponseT> & res)
 {
+  std::lock_guard<std::mutex> lock(service_mutex_);
   const auto request_ids = req->cell_ids;
   for (const auto & request_id : request_ids) {
     const auto requested_selected_map_iterator = all_pcd_file_metadata_dict_.find(request_id);
@@ -93,7 +99,6 @@ bool SelectedMapLoaderModule::on_service_get_selected_point_cloud_map(
     res->new_pointcloud_with_ids.push_back(pointcloud_map_cell_with_id);
   }
   res->header.frame_id = "map";
-  return true;
 }
 
 autoware_map_msgs::msg::PointCloudMapCellWithID

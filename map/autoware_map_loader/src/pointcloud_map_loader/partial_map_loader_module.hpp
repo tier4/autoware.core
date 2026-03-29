@@ -17,6 +17,7 @@
 
 #include "utils.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/srv/get_partial_point_cloud_map.hpp>
@@ -29,6 +30,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -37,23 +39,26 @@ namespace autoware::map_loader
 class PartialMapLoaderModule
 {
   using GetPartialPointCloudMap = autoware_map_msgs::srv::GetPartialPointCloudMap;
+  using AgnocastServiceT = agnocast::Service<GetPartialPointCloudMap>;
 
 public:
   explicit PartialMapLoaderModule(
-    rclcpp::Node * node, std::map<std::string, PCDFileMetadata> pcd_file_metadata_dict);
+    agnocast::Node * node, std::map<std::string, PCDFileMetadata> pcd_file_metadata_dict);
 
 private:
   rclcpp::Logger logger_;
 
+  mutable std::mutex service_mutex_;
   std::map<std::string, PCDFileMetadata> all_pcd_file_metadata_dict_;
-  rclcpp::Service<GetPartialPointCloudMap>::SharedPtr get_partial_pcd_maps_service_;
+  rclcpp::CallbackGroup::SharedPtr agnocast_callback_group_;
+  AgnocastServiceT::SharedPtr agnocast_get_partial_pcd_maps_service_;
 
-  [[nodiscard]] bool on_service_get_partial_point_cloud_map(
-    GetPartialPointCloudMap::Request::SharedPtr req,
-    GetPartialPointCloudMap::Response::SharedPtr res) const;
+  void on_agnocast_service_get_partial_point_cloud_map(
+    const agnocast::ipc_shared_ptr<AgnocastServiceT::RequestT> & req,
+    agnocast::ipc_shared_ptr<AgnocastServiceT::ResponseT> & res);
   void partial_area_load(
     const autoware_map_msgs::msg::AreaInfo & area,
-    const GetPartialPointCloudMap::Response::SharedPtr & response) const;
+    GetPartialPointCloudMap::Response & response) const;
   [[nodiscard]] autoware_map_msgs::msg::PointCloudMapCellWithID load_point_cloud_map_cell_with_id(
     const std::string & path, const std::string & map_id) const;
 };

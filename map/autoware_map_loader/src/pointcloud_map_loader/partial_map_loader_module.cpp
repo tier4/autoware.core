@@ -21,19 +21,22 @@
 namespace autoware::map_loader
 {
 PartialMapLoaderModule::PartialMapLoaderModule(
-  rclcpp::Node * node, std::map<std::string, PCDFileMetadata> pcd_file_metadata_dict)
+  agnocast::Node * node, std::map<std::string, PCDFileMetadata> pcd_file_metadata_dict)
 : logger_(node->get_logger()), all_pcd_file_metadata_dict_(std::move(pcd_file_metadata_dict))
 {
-  get_partial_pcd_maps_service_ = node->create_service<GetPartialPointCloudMap>(
+  agnocast_callback_group_ =
+    node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  agnocast_get_partial_pcd_maps_service_ = node->create_service<GetPartialPointCloudMap>(
     "service/get_partial_pcd_map",
     std::bind(
-      &PartialMapLoaderModule::on_service_get_partial_point_cloud_map, this, std::placeholders::_1,
-      std::placeholders::_2));
+      &PartialMapLoaderModule::on_agnocast_service_get_partial_point_cloud_map, this,
+      std::placeholders::_1, std::placeholders::_2),
+    rclcpp::ServicesQoS(), agnocast_callback_group_);
 }
 
 void PartialMapLoaderModule::partial_area_load(
   const autoware_map_msgs::msg::AreaInfo & area,
-  const GetPartialPointCloudMap::Response::SharedPtr & response) const
+  GetPartialPointCloudMap::Response & response) const
 {
   // iterate over all the available pcd map grids
   for (const auto & ele : all_pcd_file_metadata_dict_) {
@@ -53,18 +56,18 @@ void PartialMapLoaderModule::partial_area_load(
     pointcloud_map_cell_with_id.metadata.max_x = metadata.max.x;
     pointcloud_map_cell_with_id.metadata.max_y = metadata.max.y;
 
-    response->new_pointcloud_with_ids.push_back(pointcloud_map_cell_with_id);
+    response.new_pointcloud_with_ids.push_back(pointcloud_map_cell_with_id);
   }
 }
 
-bool PartialMapLoaderModule::on_service_get_partial_point_cloud_map(
-  GetPartialPointCloudMap::Request::SharedPtr req,
-  GetPartialPointCloudMap::Response::SharedPtr res) const
+void PartialMapLoaderModule::on_agnocast_service_get_partial_point_cloud_map(
+  const agnocast::ipc_shared_ptr<AgnocastServiceT::RequestT> & req,
+  agnocast::ipc_shared_ptr<AgnocastServiceT::ResponseT> & res)
 {
+  std::lock_guard<std::mutex> lock(service_mutex_);
   auto area = req->area;
-  partial_area_load(area, res);
+  partial_area_load(area, *res);
   res->header.frame_id = "map";
-  return true;
 }
 
 autoware_map_msgs::msg::PointCloudMapCellWithID

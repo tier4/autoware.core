@@ -20,7 +20,7 @@
 #include "pointcloud_map_loader_module.hpp"
 #include "selected_map_loader_module.hpp"
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <pcl/common/common.h>
 #include <pcl/point_cloud.h>
@@ -35,7 +35,7 @@
 
 namespace autoware::map_loader
 {
-class PointCloudMapLoaderNode : public rclcpp::Node
+class PointCloudMapLoaderNode : public agnocast::Node
 {
 public:
   explicit PointCloudMapLoaderNode(const rclcpp::NodeOptions & options);

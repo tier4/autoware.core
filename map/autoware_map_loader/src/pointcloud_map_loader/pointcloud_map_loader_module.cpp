@@ -41,7 +41,7 @@ sensor_msgs::msg::PointCloud2 downsample(
 }
 
 PointcloudMapLoaderModule::PointcloudMapLoaderModule(
-  rclcpp::Node * node, const std::vector<std::string> & pcd_paths,
+  agnocast::Node * node, const std::vector<std::string> & pcd_paths,
   const std::string & publisher_name, const bool use_downsample)
 : logger_(node->get_logger())
 {
@@ -50,21 +50,21 @@ PointcloudMapLoaderModule::PointcloudMapLoaderModule(
   pub_pointcloud_map_ =
     node->create_publisher<sensor_msgs::msg::PointCloud2>(publisher_name, durable_qos);
 
-  sensor_msgs::msg::PointCloud2 pcd;
+  auto loaned_msg = pub_pointcloud_map_->borrow_loaned_message();
   if (use_downsample) {
     const float leaf_size = static_cast<float>(node->declare_parameter<float>("leaf_size"));
-    pcd = load_pcd_files(pcd_paths, leaf_size);
+    *loaned_msg = load_pcd_files(pcd_paths, leaf_size);
   } else {
-    pcd = load_pcd_files(pcd_paths, boost::none);
+    *loaned_msg = load_pcd_files(pcd_paths, boost::none);
   }
 
-  if (pcd.width == 0) {
+  if (loaned_msg->width == 0) {
     RCLCPP_ERROR(logger_, "No PCD was loaded: pcd_paths.size() = %zu", pcd_paths.size());
     return;
   }
 
-  pcd.header.frame_id = "map";
-  pub_pointcloud_map_->publish(pcd);
+  loaned_msg->header.frame_id = "map";
+  pub_pointcloud_map_->publish(std::move(loaned_msg));
 }
 
 sensor_msgs::msg::PointCloud2 PointcloudMapLoaderModule::load_pcd_files(

@@ -30,7 +30,7 @@ rclcpp_components_register_node(pointcloud_map_loader_node
 agnocast_components_register_node(pointcloud_map_loader_node
   PLUGIN "autoware::map_loader::PointCloudMapLoaderNode"
   EXECUTABLE autoware_pointcloud_map_loader_agnocast
-  EXECUTOR CallbackIsolatedAgnocastExecutor
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   RESOURCE_INDEX agnocast_components
 )
 
