@@ -2,7 +2,8 @@
   <arg name="lanelet2_map_topic" default="vector_map"/>
   <arg name="lanelet2_map_marker_topic" default="vector_map_marker"/>
 
-  <node pkg="autoware_lanelet2_map_visualizer" exec="lanelet2_map_visualization" name="lanelet2_map_visualization" output="both">
+  <node pkg="autoware_lanelet2_map_visualizer" exec="autoware_lanelet2_map_visualizer_agnocast" name="lanelet2_map_visualization" output="both">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <remap from="input/lanelet2_map" to="$(var lanelet2_map_topic)"/>
     <remap from="output/lanelet2_map_marker" to="$(var lanelet2_map_marker_topic)"/>
   </node>

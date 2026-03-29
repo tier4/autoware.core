@@ -33,6 +33,7 @@
 
 #include "lanelet2_map_visualization_node.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
@@ -66,7 +67,7 @@ void set_color(std_msgs::msg::ColorRGBA * cl, double r, double g, double b, doub
 }
 
 Lanelet2MapVisualizationNode::Lanelet2MapVisualizationNode(const rclcpp::NodeOptions & options)
-: Node("lanelet2_map_visualization", options)
+: agnocast::Node("lanelet2_map_visualization", options)
 {
   using std::placeholders::_1;
 
@@ -81,7 +82,7 @@ Lanelet2MapVisualizationNode::Lanelet2MapVisualizationNode(const rclcpp::NodeOpt
 }
 
 void Lanelet2MapVisualizationNode::on_map_bin(
-  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::LaneletMapBin> & msg)
 {
   lanelet::LaneletMapPtr viz_lanelet_map(new lanelet::LaneletMap);
 
@@ -194,138 +195,138 @@ void Lanelet2MapVisualizationNode::on_map_bin(
   set_color(&cl_bicycle_lane, 0.0, 0.3843, 0.6274, 0.5);
   set_color(&cl_waypoints, 0.6, 0.4, 0.3, 0.999);
 
-  visualization_msgs::msg::MarkerArray map_marker_array;
+  auto map_marker_array = pub_marker_->borrow_loaned_message();
 
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::lineStringsAsMarkerArray(stop_lines, "stop_lines", cl_stoplines, 0.5));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::lineStringsAsMarkerArray(partitions, "partitions", cl_partitions, 0.1));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::lineStringsAsMarkerArray(
+    map_marker_array.get(), lanelet::visualization::lineStringsAsMarkerArray(
                          road_borders, "road_borders", cl_road_borders, 0.2));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::laneletDirectionAsMarkerArray(shoulder_lanelets, "shoulder_"));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::laneletDirectionAsMarkerArray(road_lanelets));
+    map_marker_array.get(), lanelet::visualization::laneletDirectionAsMarkerArray(road_lanelets));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::laneletsAsTriangleMarkerArray(
+    map_marker_array.get(), lanelet::visualization::laneletsAsTriangleMarkerArray(
                          "crosswalk_lanelets", crosswalk_lanelets, cl_cross));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::pedestrianPolygonMarkingsAsMarkerArray(
+    map_marker_array.get(), lanelet::visualization::pedestrianPolygonMarkingsAsMarkerArray(
                          pedestrian_polygon_markings, cl_pedestrian_markings));
 
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::pedestrianLineMarkingsAsMarkerArray(
+    map_marker_array.get(), lanelet::visualization::pedestrianLineMarkingsAsMarkerArray(
                          pedestrian_line_markings, cl_pedestrian_markings));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::laneletsAsTriangleMarkerArray(
+    map_marker_array.get(), lanelet::visualization::laneletsAsTriangleMarkerArray(
                          "walkway_lanelets", walkway_lanelets, cl_cross));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::obstaclePolygonsAsMarkerArray(obstacle_polygons, cl_obstacle_polygons));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::detectionAreasAsMarkerArray(da_reg_elems, cl_detection_areas));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::noStoppingAreasAsMarkerArray(no_reg_elems, cl_no_stopping_areas));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::speedBumpsAsMarkerArray(sb_reg_elems, cl_speed_bumps));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::crosswalkAreasAsMarkerArray(cw_reg_elems, cl_crosswalks));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::parkingLotsAsMarkerArray(parking_lots, cl_parking_lots));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::parkingSpacesAsMarkerArray(parking_spaces, cl_parking_spaces));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::laneletsBoundaryAsMarkerArray(
       shoulder_lanelets, cl_shoulder_borders, viz_lanelets_centerline_, "shoulder_"));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::laneletsBoundaryAsMarkerArray(
+    map_marker_array.get(), lanelet::visualization::laneletsBoundaryAsMarkerArray(
                          road_lanelets, cl_ll_borders, viz_lanelets_centerline_));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::autowareTrafficLightsAsMarkerArray(aw_tl_reg_elems, cl_trafficlights));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::generateTrafficLightRegulatoryElementIdMaker(
+    map_marker_array.get(), lanelet::visualization::generateTrafficLightRegulatoryElementIdMaker(
                          road_lanelets, cl_trafficlights));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::generateTrafficLightRegulatoryElementIdMaker(
+    map_marker_array.get(), lanelet::visualization::generateTrafficLightRegulatoryElementIdMaker(
                          crosswalk_lanelets, cl_trafficlights));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::generateTrafficLightIdMaker(aw_tl_reg_elems, cl_trafficlights));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::generateLaneletIdMarker(shoulder_lanelets, cl_lanelet_id));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::generateLaneletIdMarker(road_lanelets, cl_lanelet_id));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::generateLaneletIdMarker(
+    map_marker_array.get(), lanelet::visualization::generateLaneletIdMarker(
                          crosswalk_lanelets, cl_lanelet_id, "crosswalk_lanelet_id"));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::laneletsAsTriangleMarkerArray(
+    map_marker_array.get(), lanelet::visualization::laneletsAsTriangleMarkerArray(
                          "shoulder_road_lanelets", shoulder_lanelets, cl_shoulder));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::laneletsAsTriangleMarkerArray("road_lanelets", road_lanelets, cl_road));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::noObstacleSegmentationAreaAsMarkerArray(
+    map_marker_array.get(), lanelet::visualization::noObstacleSegmentationAreaAsMarkerArray(
                          no_obstacle_segmentation_area, cl_no_obstacle_segmentation_area));
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::noObstacleSegmentationAreaForRunOutAsMarkerArray(
       no_obstacle_segmentation_area_for_run_out, cl_no_obstacle_segmentation_area_for_run_out));
 
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::hatchedRoadMarkingsAreaAsMarkerArray(
       hatched_road_markings_area, cl_hatched_road_markings_area, cl_hatched_road_markings_line));
 
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::noParkingAreasAsMarkerArray(no_parking_reg_elems, cl_no_parking_areas));
 
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::lineStringsAsMarkerArray(curbstones, "curbstone", cl_curbstones, 0.2));
 
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::intersectionAreaAsMarkerArray(
+    map_marker_array.get(), lanelet::visualization::intersectionAreaAsMarkerArray(
                          intersection_areas, cl_intersection_area));
 
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::busStopAreasAsMarkerArray(bus_stop_reg_elems, cl_bus_stop_area));
 
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::laneletDirectionAsMarkerArray(bicycle_lane_lanelets, "bicycle_lane_"));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::laneletsBoundaryAsMarkerArray(
+    map_marker_array.get(), lanelet::visualization::laneletsBoundaryAsMarkerArray(
                          bicycle_lane_lanelets, cl_ll_borders /* use ll_border color */,
                          viz_lanelets_centerline_, "bicycle_lane_"));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::generateLaneletIdMarker(
+    map_marker_array.get(), lanelet::visualization::generateLaneletIdMarker(
                          bicycle_lane_lanelets, cl_lanelet_id /* use lanelet_id color */));
   insert_marker_array(
-    &map_marker_array, lanelet::visualization::laneletsAsTriangleMarkerArray(
+    map_marker_array.get(), lanelet::visualization::laneletsAsTriangleMarkerArray(
                          "bicycle_lane_lanelets", bicycle_lane_lanelets, cl_bicycle_lane));
 
   insert_marker_array(
-    &map_marker_array,
+    map_marker_array.get(),
     lanelet::visualization::lineStringsAsMarkerArray(waypoints, "waypoints", cl_waypoints, 0.02));
 
-  pub_marker_->publish(map_marker_array);
+  pub_marker_->publish(std::move(map_marker_array));
 }
 }  // namespace autoware::lanelet2_map_visualizer
 
