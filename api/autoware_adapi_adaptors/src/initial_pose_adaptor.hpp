@@ -15,16 +15,16 @@
 #ifndef INITIAL_POSE_ADAPTOR_HPP_
 #define INITIAL_POSE_ADAPTOR_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/localization.hpp>
 #include <autoware/map_height_fitter/map_height_fitter.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
 namespace autoware::adapi_adaptors
 {
 
-class InitialPoseAdaptor : public rclcpp::Node
+class InitialPoseAdaptor : public agnocast::Node
 {
 public:
   explicit InitialPoseAdaptor(const rclcpp::NodeOptions & options);
@@ -32,12 +32,12 @@ public:
 private:
   using PoseWithCovarianceStamped = geometry_msgs::msg::PoseWithCovarianceStamped;
   using Initialize = autoware::adapi_specs::localization::Initialize;
-  rclcpp::Subscription<PoseWithCovarianceStamped>::SharedPtr sub_initial_pose_;
-  rclcpp::Client<Initialize::Service>::SharedPtr cli_initialize_;
+  agnocast::Subscription<PoseWithCovarianceStamped>::SharedPtr sub_initial_pose_;
+  agnocast::Client<Initialize::Service>::SharedPtr cli_initialize_;
   std::array<double, 36> rviz_particle_covariance_;
   autoware::map_height_fitter::MapHeightFitter fitter_;
 
-  void on_initial_pose(const PoseWithCovarianceStamped::ConstSharedPtr msg);
+  void on_initial_pose(const agnocast::ipc_shared_ptr<const PoseWithCovarianceStamped> & msg);
 };
 
 }  // namespace autoware::adapi_adaptors

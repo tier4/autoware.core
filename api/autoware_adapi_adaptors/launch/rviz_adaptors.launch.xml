@@ -3,7 +3,8 @@
 
   <group>
     <push-ros-namespace namespace="default_adapi/helpers"/>
-    <node pkg="autoware_adapi_adaptors" exec="initial_pose_adaptor_node">
+    <node pkg="autoware_adapi_adaptors" exec="initial_pose_adaptor_agnocast_node">
+      <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
       <param from="$(find-pkg-share autoware_adapi_adaptors)/config/initial_pose.param.yaml"/>
       <param name="map_height_fitter.map_loader_name" value="/map/pointcloud_map_loader"/>
       <param name="map_height_fitter.target" value="$(var rviz_initial_pose_auto_fix_target)"/>

@@ -7,15 +7,28 @@ autoware_package()
 find_package(agnocastlib REQUIRED)
 find_package(agnocast_components REQUIRED)
 
-# Initial pose adaptor (rclcpp only)
+# Initial pose adaptor (agnocast)
 ament_auto_add_library(${PROJECT_NAME}_initial_pose SHARED
   src/initial_pose_adaptor.cpp
+)
+
+target_link_libraries(${PROJECT_NAME}_initial_pose
+  ${agnocastlib_LIBRARIES}
+)
+target_include_directories(${PROJECT_NAME}_initial_pose SYSTEM PUBLIC
+  ${agnocastlib_INCLUDE_DIRS}
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}_initial_pose
   PLUGIN "autoware::adapi_adaptors::InitialPoseAdaptor"
   EXECUTABLE initial_pose_adaptor_node
-  EXECUTOR MultiThreadedExecutor
+)
+
+agnocast_components_register_node(${PROJECT_NAME}_initial_pose
+  PLUGIN "autoware::adapi_adaptors::InitialPoseAdaptor"
+  EXECUTABLE initial_pose_adaptor_agnocast_node
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 # Routing adaptor (agnocast)

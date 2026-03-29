@@ -20,10 +20,7 @@
 
 namespace autoware::adapi_adaptors
 {
-template <class ServiceT>
-using Future = typename rclcpp::Client<ServiceT>::SharedFuture;
-
-std::array<double, 36> get_covariance_parameter(rclcpp::Node * node, const std::string & name)
+std::array<double, 36> get_covariance_parameter(agnocast::Node * node, const std::string & name)
 {
   const auto vector = node->declare_parameter<std::vector<double>>(name);
   if (vector.size() != 36) {
@@ -35,18 +32,18 @@ std::array<double, 36> get_covariance_parameter(rclcpp::Node * node, const std::
 }
 
 InitialPoseAdaptor::InitialPoseAdaptor(const rclcpp::NodeOptions & options)
-: Node("autoware_initial_pose_adaptor", options), fitter_(this)
+: agnocast::Node("autoware_initial_pose_adaptor", options), fitter_(this)
 {
   rviz_particle_covariance_ = get_covariance_parameter(this, "initial_pose_particle_covariance");
   sub_initial_pose_ = create_subscription<PoseWithCovarianceStamped>(
     "~/initialpose", rclcpp::QoS(1),
     std::bind(&InitialPoseAdaptor::on_initial_pose, this, std::placeholders::_1));
 
-  cli_initialize_ =
-    create_client<Initialize::Service>(Initialize::name, rmw_qos_profile_services_default);
+  cli_initialize_ = create_client<Initialize::Service>(Initialize::name);
 }
 
-void InitialPoseAdaptor::on_initial_pose(const PoseWithCovarianceStamped::ConstSharedPtr msg)
+void InitialPoseAdaptor::on_initial_pose(
+  const agnocast::ipc_shared_ptr<const PoseWithCovarianceStamped> & msg)
 {
   PoseWithCovarianceStamped pose = *msg;
   const auto fitted = fitter_.fit(pose.pose.pose.position, pose.header.frame_id);
@@ -55,9 +52,9 @@ void InitialPoseAdaptor::on_initial_pose(const PoseWithCovarianceStamped::ConstS
   }
   pose.pose.covariance = rviz_particle_covariance_;
 
-  const auto req = std::make_shared<Initialize::Service::Request>();
+  auto req = cli_initialize_->borrow_loaned_request();
   req->pose.push_back(pose);
-  cli_initialize_->async_send_request(req);
+  cli_initialize_->async_send_request(std::move(req));
 }
 
 }  // namespace autoware::adapi_adaptors
