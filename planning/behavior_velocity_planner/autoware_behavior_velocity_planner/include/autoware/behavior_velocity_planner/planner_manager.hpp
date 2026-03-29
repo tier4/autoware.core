@@ -20,6 +20,8 @@
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -43,8 +45,8 @@ class BehaviorVelocityPlannerManager
 {
 public:
   BehaviorVelocityPlannerManager();
-  void launchScenePlugin(rclcpp::Node & node, const std::string & name);
-  void removeScenePlugin(rclcpp::Node & node, const std::string & name);
+  void launchScenePlugin(agnocast::Node & node, const std::string & name);
+  void removeScenePlugin(agnocast::Node & node, const std::string & name);
 
   // cppcheck-suppress functionConst
   autoware_internal_planning_msgs::msg::PathWithLaneId planPathVelocity(

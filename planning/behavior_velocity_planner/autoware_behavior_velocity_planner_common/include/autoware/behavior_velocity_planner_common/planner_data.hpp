@@ -45,7 +45,7 @@ namespace autoware::behavior_velocity_planner
 {
 struct PlannerData
 {
-  explicit PlannerData(rclcpp::Node & node);
+  explicit PlannerData(agnocast::Node & node);
 
   rclcpp::Clock::SharedPtr clock_;
 

@@ -20,9 +20,10 @@
 
 namespace autoware::behavior_velocity_planner
 {
-PlannerData::PlannerData(rclcpp::Node & node)
+PlannerData::PlannerData(agnocast::Node & node)
 : clock_(node.get_clock()),
-  vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo())
+  vehicle_info_(
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo())
 {
   max_stop_acceleration_threshold = node.declare_parameter<double>("max_accel");
   max_stop_jerk_threshold = node.declare_parameter<double>("max_jerk");

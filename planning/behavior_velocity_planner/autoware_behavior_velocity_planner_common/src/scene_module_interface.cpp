@@ -55,7 +55,7 @@ std::string formatIds(
 SceneModuleInterface::SceneModuleInterface(
   const int64_t module_id, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface)
 : module_id_(module_id),
   logger_(logger),
@@ -110,7 +110,7 @@ DEFINE_LOG_THROTTLE_FUNCTION(logDebugThrottle, RCLCPP_DEBUG_THROTTLE)
 #undef DEFINE_LOG_THROTTLE_FUNCTION
 
 template SceneModuleManagerInterface<SceneModuleInterface>::SceneModuleManagerInterface(
-  rclcpp::Node & node, [[maybe_unused]] const char * module_name);
+  agnocast::Node & node, [[maybe_unused]] const char * module_name);
 template size_t SceneModuleManagerInterface<SceneModuleInterface>::findEgoSegmentIndex(
   const std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> & points) const;
 template void SceneModuleManagerInterface<SceneModuleInterface>::updateSceneModuleInstances(

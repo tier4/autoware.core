@@ -32,7 +32,7 @@ BehaviorVelocityPlannerManager::BehaviorVelocityPlannerManager()
 }
 
 void BehaviorVelocityPlannerManager::launchScenePlugin(
-  rclcpp::Node & node, const std::string & name)
+  agnocast::Node & node, const std::string & name)
 {
   if (plugin_loader_.isClassAvailable(name)) {
     const auto plugin = plugin_loader_.createSharedInstance(name);
@@ -59,7 +59,7 @@ void BehaviorVelocityPlannerManager::launchScenePlugin(
 }
 
 void BehaviorVelocityPlannerManager::removeScenePlugin(
-  rclcpp::Node & node, const std::string & name)
+  agnocast::Node & node, const std::string & name)
 {
   auto it = std::remove_if(
     scene_manager_plugins_.begin(), scene_manager_plugins_.end(),

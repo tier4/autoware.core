@@ -43,6 +43,7 @@
 #include <vector>
 
 // Debug
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -51,10 +52,14 @@ namespace autoware::behavior_velocity_planner
 {
 
 using autoware::objects_of_interest_marker_interface::ColorName;
-using autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface;
+using ObjectsOfInterestMarkerInterface =
+  autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<
+    agnocast::Node>;
 using autoware_internal_debug_msgs::msg::Float64Stamped;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
-using autoware_utils_debug::DebugPublisher;
+using DebugPublisher = autoware_utils_debug::BasicDebugPublisher<agnocast::Node>;
+using PlanningFactorInterface =
+  planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>;
 using autoware_utils_rclcpp::get_or_declare_parameter;
 using autoware_utils_system::StopWatch;
 using builtin_interfaces::msg::Time;
@@ -79,7 +84,7 @@ public:
   explicit SceneModuleInterface(
     const int64_t module_id, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper,
-    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+    const std::shared_ptr<PlanningFactorInterface>
       planning_factor_interface);
   virtual ~SceneModuleInterface() = default;
 
@@ -105,7 +110,7 @@ protected:
   std::shared_ptr<const PlannerData> planner_data_;
   std::vector<ObjectOfInterest> objects_of_interest_;
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
-  std::shared_ptr<planning_factor_interface::PlanningFactorInterface> planning_factor_interface_;
+  std::shared_ptr<PlanningFactorInterface> planning_factor_interface_;
 
   void setObjectsOfInterestData(
     const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape,
@@ -136,7 +141,7 @@ template <class T = SceneModuleInterface>
 class SceneModuleManagerInterface
 {
 public:
-  SceneModuleManagerInterface(rclcpp::Node & node, [[maybe_unused]] const char * module_name)
+  SceneModuleManagerInterface(agnocast::Node & node, [[maybe_unused]] const char * module_name)
   : node_(node), clock_(node.get_clock()), logger_(node.get_logger())
   {
     const auto ns = std::string("~/debug/") + module_name;
@@ -159,7 +164,7 @@ public:
       get_or_declare_parameter<int>(node, "planning_factor_console_output.duration");
 
     planning_factor_interface_ =
-      std::make_shared<planning_factor_interface::PlanningFactorInterface>(
+      std::make_shared<PlanningFactorInterface>(
         &node, module_name, enable_console_output, throttle_duration_ms);
 
     processing_time_publisher_ = std::make_shared<DebugPublisher>(&node, "~/debug");
@@ -214,14 +219,22 @@ protected:
     }
 
     planning_factor_interface_->publish();
-    pub_debug_->publish(debug_marker_array);
-    if (is_publish_debug_path_) {
-      autoware_internal_planning_msgs::msg::PathWithLaneId debug_path;
-      debug_path.header = path->header;
-      debug_path.points = path->points;
-      pub_debug_path_->publish(debug_path);
+    {
+      auto loaned = pub_debug_->borrow_loaned_message();
+      *loaned = debug_marker_array;
+      pub_debug_->publish(std::move(loaned));
     }
-    pub_virtual_wall_->publish(virtual_wall_marker_creator_.create_markers(clock_->now()));
+    if (is_publish_debug_path_) {
+      auto loaned = pub_debug_path_->borrow_loaned_message();
+      loaned->header = path->header;
+      loaned->points = path->points;
+      pub_debug_path_->publish(std::move(loaned));
+    }
+    {
+      auto loaned = pub_virtual_wall_->borrow_loaned_message();
+      *loaned = virtual_wall_marker_creator_.create_markers(clock_->now());
+      pub_virtual_wall_->publish(std::move(loaned));
+    }
     processing_time_publisher_->publish<Float64Stamped>(
       std::string(getModuleName()) + "/processing_time_ms", stop_watch.toc("Total"));
   }
@@ -279,29 +292,29 @@ protected:
   std::shared_ptr<const PlannerData> planner_data_;
   autoware::motion_utils::VirtualWallMarkerCreator virtual_wall_marker_creator_;
 
-  rclcpp::Node & node_;
+  agnocast::Node & node_;
   rclcpp::Clock::SharedPtr clock_;
   // Debug
   bool is_publish_debug_path_ = {false};  // note : this is very heavy debug topic option
   rclcpp::Logger logger_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_virtual_wall_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_;
-  rclcpp::Publisher<autoware_internal_planning_msgs::msg::PathWithLaneId>::SharedPtr
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_virtual_wall_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_;
+  agnocast::Publisher<autoware_internal_planning_msgs::msg::PathWithLaneId>::SharedPtr
     pub_debug_path_;
 
   std::shared_ptr<DebugPublisher> processing_time_publisher_;
 
-  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+  agnocast::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     pub_processing_time_detail_;
 
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 
-  std::shared_ptr<planning_factor_interface::PlanningFactorInterface> planning_factor_interface_;
+  std::shared_ptr<PlanningFactorInterface> planning_factor_interface_;
 
 };
 
 extern template SceneModuleManagerInterface<SceneModuleInterface>::SceneModuleManagerInterface(
-  rclcpp::Node & node, [[maybe_unused]] const char * module_name);
+  agnocast::Node & node, [[maybe_unused]] const char * module_name);
 extern template size_t SceneModuleManagerInterface<SceneModuleInterface>::findEgoSegmentIndex(
   const std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> & points) const;
 extern template void SceneModuleManagerInterface<SceneModuleInterface>::updateSceneModuleInstances(

@@ -28,7 +28,7 @@ namespace autoware::behavior_velocity_planner
 using autoware_utils::get_or_declare_parameter;
 using lanelet::TrafficSign;
 
-StopLineModuleManager::StopLineModuleManager(rclcpp::Node & node)
+StopLineModuleManager::StopLineModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterface(node, getModuleName()), planner_param_()
 {
   const std::string ns(StopLineModuleManager::getModuleName());

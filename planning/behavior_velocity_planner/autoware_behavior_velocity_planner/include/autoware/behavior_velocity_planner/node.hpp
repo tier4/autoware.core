@@ -18,9 +18,6 @@
 #include "autoware/behavior_velocity_planner/planner_manager.hpp"
 
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
-#include <autoware_utils_debug/published_time_publisher.hpp>
-#include <autoware_utils_logging/logger_level_configure.hpp>
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -33,13 +30,16 @@
 #include <autoware_internal_planning_msgs/srv/unload_plugin.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/path.hpp>
+#include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include <tf2_ros/buffer.h>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
 #include <tf2_ros/transform_listener.h>
 
 #include <memory>
@@ -55,18 +55,18 @@ using autoware_internal_planning_msgs::srv::LoadPlugin;
 using autoware_internal_planning_msgs::srv::UnloadPlugin;
 using autoware_map_msgs::msg::LaneletMapBin;
 
-class BehaviorVelocityPlannerNode : public rclcpp::Node
+class BehaviorVelocityPlannerNode : public agnocast::Node
 {
 public:
   explicit BehaviorVelocityPlannerNode(const rclcpp::NodeOptions & node_options);
 
 private:
   // tf
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  agnocast::Buffer tf_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
 
   // subscriber
-  rclcpp::Subscription<autoware_internal_planning_msgs::msg::PathWithLaneId>::SharedPtr
+  agnocast::Subscription<autoware_internal_planning_msgs::msg::PathWithLaneId>::SharedPtr
     trigger_sub_path_with_lane_id_;
 
   // polling subscribers
@@ -75,28 +75,23 @@ private:
 
   agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>::SharedPtr sub_no_ground_pointcloud_;
 
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<nav_msgs::msg::Odometry>
-    sub_vehicle_odometry_{this, "~/input/vehicle_odometry"};
+  agnocast::PollingSubscriber<nav_msgs::msg::Odometry>::SharedPtr sub_vehicle_odometry_;
 
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<
-    geometry_msgs::msg::AccelWithCovarianceStamped>
-    sub_acceleration_{this, "~/input/accel"};
+  agnocast::PollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr
+    sub_acceleration_;
 
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<
-    autoware_perception_msgs::msg::TrafficLightGroupArray>
-    sub_traffic_signals_{this, "~/input/traffic_signals"};
+  agnocast::PollingSubscriber<autoware_perception_msgs::msg::TrafficLightGroupArray>::SharedPtr
+    sub_traffic_signals_;
 
   agnocast::PollingSubscriber<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_occupancy_grid_;
 
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<
-    LaneletMapBin, autoware_utils_rclcpp::polling_policy::Newest>
-    sub_lanelet_map_{this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
+  agnocast::PollingSubscriber<LaneletMapBin>::SharedPtr sub_lanelet_map_;
 
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit> sub_external_velocity_limit_{
-    this, "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local()};
+  agnocast::PollingSubscriber<VelocityLimit>::SharedPtr sub_external_velocity_limit_;
 
   void onTrigger(
-    const autoware_internal_planning_msgs::msg::PathWithLaneId::ConstSharedPtr input_path_msg);
+    const agnocast::ipc_shared_ptr<const autoware_internal_planning_msgs::msg::PathWithLaneId> &
+      input_path_msg);
 
   void onParam();
 
@@ -108,9 +103,9 @@ private:
   bool processData(rclcpp::Clock clock);
 
   // publisher
-  rclcpp::Publisher<autoware_planning_msgs::msg::Path>::SharedPtr path_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr processing_time_publisher_;
+  agnocast::Publisher<autoware_planning_msgs::msg::Path>::SharedPtr path_pub_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
+  agnocast::Publisher<Float64Stamped>::SharedPtr processing_time_publisher_;
 
   void publishDebugMarker(const autoware_planning_msgs::msg::Path & path);
   void publishProcessingTime();
@@ -126,13 +121,14 @@ private:
   bool is_driving_forward_{true};
   autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch_;
 
-  rclcpp::Service<LoadPlugin>::SharedPtr srv_load_plugin_;
-  rclcpp::Service<UnloadPlugin>::SharedPtr srv_unload_plugin_;
+  agnocast::Service<LoadPlugin>::SharedPtr srv_load_plugin_;
+  agnocast::Service<UnloadPlugin>::SharedPtr srv_unload_plugin_;
   void onUnloadPlugin(
-    const UnloadPlugin::Request::SharedPtr request,
-    const UnloadPlugin::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<agnocast::Service<UnloadPlugin>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<UnloadPlugin>::ResponseT> & response);
   void onLoadPlugin(
-    const LoadPlugin::Request::SharedPtr request, const LoadPlugin::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<agnocast::Service<LoadPlugin>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<LoadPlugin>::ResponseT> & response);
 
   // mutex for planner_data_
   std::mutex mutex_;
@@ -140,12 +136,9 @@ private:
   // function
   bool isDataReady(rclcpp::Clock clock);
   autoware_planning_msgs::msg::Path generatePath(
-    const autoware_internal_planning_msgs::msg::PathWithLaneId::ConstSharedPtr input_path_msg,
+    const agnocast::ipc_shared_ptr<const autoware_internal_planning_msgs::msg::PathWithLaneId> &
+      input_path_msg,
     const PlannerData & planner_data);
-
-  std::unique_ptr<autoware_utils_logging::LoggerLevelConfigure> logger_configure_;
-
-  std::unique_ptr<autoware_utils_debug::PublishedTimePublisher> published_time_publisher_;
 
   static constexpr int logger_throttle_interval = 3000;
 };

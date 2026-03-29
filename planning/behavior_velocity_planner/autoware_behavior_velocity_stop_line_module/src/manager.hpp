@@ -38,7 +38,7 @@ using StopLineWithLaneId = std::pair<lanelet::ConstLineString3d, lanelet::Id>;
 class StopLineModuleManager : public SceneModuleManagerInterface<>
 {
 public:
-  explicit StopLineModuleManager(rclcpp::Node & node);
+  explicit StopLineModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "stop_line"; }
 

@@ -20,7 +20,6 @@
 #include <autoware/velocity_smoother/smoother/analytical_jerk_constrained_smoother/analytical_jerk_constrained_smoother.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_utils_pcl/transforms.hpp>
-#include <autoware_utils_rclcpp/parameter.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
@@ -52,11 +51,11 @@ autoware_planning_msgs::msg::Path to_path(
 }  // namespace
 
 BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptions & node_options)
-: Node("behavior_velocity_planner_node", node_options),
+: agnocast::Node("behavior_velocity_planner_node", node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_),
   planner_data_(*this)
 {
+  tf_listener_ = std::make_unique<agnocast::TransformListener>(tf_buffer_, *this);
   using std::placeholders::_1;
   using std::placeholders::_2;
 
@@ -74,13 +73,27 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
   // Agnocast polling subscribers
   sub_no_ground_pointcloud_ =
     std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
-      this, "~/input/no_ground_pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos());
+      this, "~/input/no_ground_pointcloud");
   sub_predicted_objects_ =
     std::make_shared<agnocast::PollingSubscriber<autoware_perception_msgs::msg::PredictedObjects>>(
       this, "~/input/dynamic_objects");
   sub_occupancy_grid_ =
     std::make_shared<agnocast::PollingSubscriber<nav_msgs::msg::OccupancyGrid>>(
       this, "~/input/occupancy_grid");
+  sub_vehicle_odometry_ =
+    std::make_shared<agnocast::PollingSubscriber<nav_msgs::msg::Odometry>>(
+      this, "~/input/vehicle_odometry");
+  sub_acceleration_ =
+    std::make_shared<agnocast::PollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped>>(
+      this, "~/input/accel");
+  sub_traffic_signals_ = std::make_shared<
+    agnocast::PollingSubscriber<autoware_perception_msgs::msg::TrafficLightGroupArray>>(
+    this, "~/input/traffic_signals");
+  sub_lanelet_map_ = std::make_shared<agnocast::PollingSubscriber<LaneletMapBin>>(
+    this, "~/input/vector_map");
+  sub_external_velocity_limit_ =
+    std::make_shared<agnocast::PollingSubscriber<VelocityLimit>>(
+      this, "~/input/external_velocity_limit_mps");
 
   // set velocity smoother param
   onParam();
@@ -113,22 +126,19 @@ BehaviorVelocityPlannerNode::BehaviorVelocityPlannerNode(const rclcpp::NodeOptio
     }
     planner_manager_.launchScenePlugin(*this, name);
   }
-
-  logger_configure_ = std::make_unique<autoware_utils_logging::LoggerLevelConfigure>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils_debug::PublishedTimePublisher>(this);
 }
 
 void BehaviorVelocityPlannerNode::onLoadPlugin(
-  const LoadPlugin::Request::SharedPtr request,
-  [[maybe_unused]] const LoadPlugin::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<agnocast::Service<LoadPlugin>::RequestT> & request,
+  [[maybe_unused]] agnocast::ipc_shared_ptr<agnocast::Service<LoadPlugin>::ResponseT> & response)
 {
   std::unique_lock<std::mutex> lk(mutex_);
   planner_manager_.launchScenePlugin(*this, request->plugin_name);
 }
 
 void BehaviorVelocityPlannerNode::onUnloadPlugin(
-  const UnloadPlugin::Request::SharedPtr request,
-  [[maybe_unused]] const UnloadPlugin::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<agnocast::Service<UnloadPlugin>::RequestT> & request,
+  [[maybe_unused]] agnocast::ipc_shared_ptr<agnocast::Service<UnloadPlugin>::ResponseT> & response)
 {
   std::unique_lock<std::mutex> lk(mutex_);
   planner_manager_.removeScenePlugin(*this, request->plugin_name);
@@ -141,7 +151,7 @@ void BehaviorVelocityPlannerNode::onParam()
   // lock(mutex_);
   planner_data_.velocity_smoother_ =
     std::make_unique<autoware::velocity_smoother::AnalyticalJerkConstrainedSmoother>(
-      static_cast<rclcpp::Node &>(*this));
+      static_cast<agnocast::Node &>(*this));
   planner_data_.velocity_smoother_->setWheelBase(planner_data_.vehicle_info_.wheel_base_m);
 }
 
@@ -244,25 +254,18 @@ bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
     RCLCPP_INFO_THROTTLE(get_logger(), clock, logger_throttle_interval, "%s", msg.c_str());
   };
 
-  const auto & getData = [&logData](
-                           auto & dest, auto & sub, const std::string & data_type = "",
-                           const bool is_required = true) {
-    if (!is_required) {
-      return true;
-    }
-
-    const auto temp = sub.take_data();
-    if (temp) {
-      dest = temp;
-      return true;
-    }
-    if (!data_type.empty()) logData(data_type);
-    return false;
-  };
-
   const auto required_subscriptions = planner_manager_.getRequiredSubscriptions();
 
-  is_ready &= getData(planner_data_.current_acceleration, sub_acceleration_, "acceleration");
+  {
+    const auto accel = sub_acceleration_->take_data();
+    if (accel) {
+      planner_data_.current_acceleration =
+        std::make_shared<geometry_msgs::msg::AccelWithCovarianceStamped>(*accel);
+    } else {
+      logData("acceleration");
+      is_ready = false;
+    }
+  }
   if (required_subscriptions.predicted_objects) {
     const auto predicted_objects = sub_predicted_objects_->take_data();
     if (predicted_objects) {
@@ -283,10 +286,14 @@ bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
     }
   }
 
-  nav_msgs::msg::Odometry::ConstSharedPtr odometry;
-  is_ready &= getData(odometry, sub_vehicle_odometry_, "odometry");
-  if (odometry) {
-    processOdometry(odometry);
+  {
+    const auto odometry = sub_vehicle_odometry_->take_data();
+    if (odometry) {
+      processOdometry(std::make_shared<nav_msgs::msg::Odometry>(*odometry));
+    } else {
+      logData("odometry");
+      is_ready = false;
+    }
   }
 
   if (required_subscriptions.no_ground_pointcloud) {
@@ -299,21 +306,22 @@ bool BehaviorVelocityPlannerNode::processData(rclcpp::Clock clock)
     }
   }
 
-  const auto map_data = sub_lanelet_map_.take_data();
+  const auto map_data = sub_lanelet_map_->take_data();
   if (map_data) {
     planner_data_.route_handler_ = std::make_shared<route_handler::RouteHandler>(*map_data);
   }
 
   // planner_data_.external_velocity_limit is std::optional type variable.
-  const auto external_velocity_limit = sub_external_velocity_limit_.take_data();
+  const auto external_velocity_limit = sub_external_velocity_limit_->take_data();
   if (external_velocity_limit) {
     planner_data_.external_velocity_limit = *external_velocity_limit;
   }
 
-  const auto traffic_signals = sub_traffic_signals_.take_data();
+  const auto traffic_signals = sub_traffic_signals_->take_data();
   if (traffic_signals) {
     // NOTE: required_subscriptions.traffic_signals is not used since is_ready is not updated here.
-    processTrafficSignals(traffic_signals);
+    processTrafficSignals(
+      std::make_shared<autoware_perception_msgs::msg::TrafficLightGroupArray>(*traffic_signals));
   }
 
   return is_ready;
@@ -333,7 +341,8 @@ bool BehaviorVelocityPlannerNode::isDataReady(rclcpp::Clock clock)
 }
 
 void BehaviorVelocityPlannerNode::onTrigger(
-  const autoware_internal_planning_msgs::msg::PathWithLaneId::ConstSharedPtr input_path_msg)
+  const agnocast::ipc_shared_ptr<const autoware_internal_planning_msgs::msg::PathWithLaneId> &
+    input_path_msg)
 {
   stop_watch_.tic();
   std::unique_lock<std::mutex> lk(mutex_);
@@ -359,18 +368,20 @@ void BehaviorVelocityPlannerNode::onTrigger(
 
   lk.unlock();
 
-  path_pub_->publish(output_path_msg);
-  published_time_publisher_->publish_if_subscribed(path_pub_, output_path_msg.header.stamp);
-
-  if (debug_viz_pub_->get_subscription_count() > 0) {
-    publishDebugMarker(output_path_msg);
+  {
+    auto loaned = path_pub_->borrow_loaned_message();
+    *loaned = output_path_msg;
+    path_pub_->publish(std::move(loaned));
   }
+
+  publishDebugMarker(output_path_msg);
 
   publishProcessingTime();
 }
 
 autoware_planning_msgs::msg::Path BehaviorVelocityPlannerNode::generatePath(
-  const autoware_internal_planning_msgs::msg::PathWithLaneId::ConstSharedPtr input_path_msg,
+  const agnocast::ipc_shared_ptr<const autoware_internal_planning_msgs::msg::PathWithLaneId> &
+    input_path_msg,
   const PlannerData & planner_data)
 {
   autoware_planning_msgs::msg::Path output_path_msg;
@@ -417,15 +428,15 @@ autoware_planning_msgs::msg::Path BehaviorVelocityPlannerNode::generatePath(
 
 void BehaviorVelocityPlannerNode::publishProcessingTime()
 {
-  Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = get_clock()->now();
-  processing_time_msg.data = stop_watch_.toc();
-  processing_time_publisher_->publish(processing_time_msg);
+  auto loaned = processing_time_publisher_->borrow_loaned_message();
+  loaned->stamp = get_clock()->now();
+  loaned->data = stop_watch_.toc();
+  processing_time_publisher_->publish(std::move(loaned));
 }
 
 void BehaviorVelocityPlannerNode::publishDebugMarker(const autoware_planning_msgs::msg::Path & path)
 {
-  visualization_msgs::msg::MarkerArray output_msg;
+  auto loaned = debug_viz_pub_->borrow_loaned_message();
   for (size_t i = 0; i < path.points.size(); ++i) {
     visualization_msgs::msg::Marker marker;
     marker.header = path.header;
@@ -440,9 +451,9 @@ void BehaviorVelocityPlannerNode::publishDebugMarker(const autoware_planning_msg
     marker.color.r = 1.0;
     marker.color.g = 1.0;
     marker.color.b = 1.0;
-    output_msg.markers.push_back(marker);
+    loaned->markers.push_back(marker);
   }
-  debug_viz_pub_->publish(output_msg);
+  debug_viz_pub_->publish(std::move(loaned));
 }
 }  // namespace autoware::behavior_velocity_planner
 

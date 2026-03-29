@@ -18,6 +18,8 @@
 #include <autoware/behavior_velocity_planner_common/planner_data.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 
 #include <memory>
@@ -29,7 +31,7 @@ class PluginInterface
 {
 public:
   virtual ~PluginInterface() = default;
-  virtual void init(rclcpp::Node & node) = 0;
+  virtual void init(agnocast::Node & node) = 0;
   virtual RequiredSubscriptionInfo getRequiredSubscriptions() = 0;
   virtual void plan(autoware_internal_planning_msgs::msg::PathWithLaneId * path) = 0;
   virtual void updateSceneModuleInstances(

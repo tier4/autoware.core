@@ -53,7 +53,7 @@ StopLineModule::StopLineModule(
   const rclcpp::Logger & logger,                                          //
   const rclcpp::Clock::SharedPtr clock,                                   //
   const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper,  //
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface> &
+  const std::shared_ptr<PlanningFactorInterface> &
     planning_factor_interface)
 : SceneModuleInterface(module_id, logger, clock, time_keeper, planning_factor_interface),
   stop_line_(stop_line),

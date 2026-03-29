@@ -27,7 +27,7 @@ template <class T>
 class PluginWrapper : public PluginInterface
 {
 public:
-  void init(rclcpp::Node & node) override { scene_manager_ = std::make_unique<T>(node); }
+  void init(agnocast::Node & node) override { scene_manager_ = std::make_unique<T>(node); }
   RequiredSubscriptionInfo getRequiredSubscriptions() override
   {
     return scene_manager_->getRequiredSubscriptions();
