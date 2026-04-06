@@ -21,6 +21,7 @@ agnocast_components_register_node(${PROJECT_NAME}_lib
   PLUGIN "autoware::behavior_velocity_planner::BehaviorVelocityPlannerNode"
   EXECUTABLE ${PROJECT_NAME}_agnocast_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

@@ -29,6 +29,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::ekf_localizer::EKFLocalizer"
   EXECUTABLE ${PROJECT_NAME}_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 target_link_libraries(${PROJECT_NAME} Eigen3::Eigen)

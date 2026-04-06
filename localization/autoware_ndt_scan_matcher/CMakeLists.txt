@@ -58,6 +58,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::ndt_scan_matcher::NDTScanMatcher"
   EXECUTABLE agnocast_${PROJECT_NAME}_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 # TODO(agnocast): Tests are disabled because they use rclcpp::Executor with agnocast::Node,

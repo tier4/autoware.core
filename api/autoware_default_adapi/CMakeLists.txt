@@ -19,18 +19,21 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::InterfaceNode"
   EXECUTABLE interface_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::LocalizationNode"
   EXECUTABLE localization_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::RoutingNode"
   EXECUTABLE routing_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

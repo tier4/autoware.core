@@ -23,6 +23,7 @@ agnocast_components_register_node(gnss_poser_node
   PLUGIN "autoware::gnss_poser::GNSSPoser"
   EXECUTABLE gnss_poser
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)
