@@ -14,8 +14,9 @@
 
 #include "autoware/ekf_localizer/ekf_localizer.hpp"
 
-#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 
 #include <gtest/gtest.h>
 
