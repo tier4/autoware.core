@@ -479,8 +479,29 @@ void EKFLocalizer::update_diagnostics(
 
   const uint8_t level_before = merged_diagnostic_status_.level;
 
+  bool debug_inject_merge_error = false;
+  {
+    rclcpp::Parameter p;
+    if (get_parameter("diagnostics.debug_inject_merge_error", p)) {
+      debug_inject_merge_error = p.as_bool();
+    }
+  }
+
   diagnostic_msgs::msg::DiagnosticStatus diag_merged_status;
-  diag_merged_status = merge_diagnostic_status(diag_status_array);
+  if (debug_inject_merge_error) {
+    std::vector<diagnostic_msgs::msg::DiagnosticStatus> extended = diag_status_array;
+    diagnostic_msgs::msg::DiagnosticStatus inj;
+    inj.name = std::string("localization: ") + get_name() + ": debug_inject_merge_error";
+    inj.hardware_id = get_name();
+    inj.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    inj.message =
+      "debug: forced merge ERROR (clear with: ros2 param set <node> "
+      "diagnostics.debug_inject_merge_error false)";
+    extended.push_back(inj);
+    diag_merged_status = merge_diagnostic_status(extended);
+  } else {
+    diag_merged_status = merge_diagnostic_status(diag_status_array);
+  }
   const uint8_t level_merged = diag_merged_status.level;
 
   // merged_diagnostic_status_ always tracks merge: ERROR→WARN when merge worst is WARN,

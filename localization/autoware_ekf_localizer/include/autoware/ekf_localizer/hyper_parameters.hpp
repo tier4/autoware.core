@@ -72,6 +72,8 @@ public:
     threshold_observable_velocity_mps(
       node->declare_parameter<double>("misc.threshold_observable_velocity_mps"))
   {
+    // Runtime-toggle via `ros2 param set` (not cached in members — read each tick in update_diagnostics).
+    node->declare_parameter<bool>("diagnostics.debug_inject_merge_error", false);
   }
 
   const bool show_debug_info;
