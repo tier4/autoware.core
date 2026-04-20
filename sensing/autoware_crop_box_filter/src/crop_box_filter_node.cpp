@@ -420,6 +420,52 @@ bool CropBoxFilter::is_data_layout_compatible_with_point_xyzirc(const PointCloud
   return same_layout;
 }
 
+bool CropBoxFilter::is_data_layout_compatible_with_point_xyzirct(const PointCloud2 & input)
+{
+  using PointIndex = autoware::point_types::PointXYZIRCTIndex;
+  using autoware::point_types::PointXYZIRCT;
+  if (input.fields.size() < 7) {
+    return false;
+  }
+  bool same_layout = true;
+  const auto & field_x = input.fields.at(static_cast<size_t>(PointIndex::X));
+  same_layout &= field_x.name == "x";
+  same_layout &= field_x.offset == offsetof(PointXYZIRCT, x);
+  same_layout &= field_x.datatype == sensor_msgs::msg::PointField::FLOAT32;
+  same_layout &= field_x.count == 1;
+  const auto & field_y = input.fields.at(static_cast<size_t>(PointIndex::Y));
+  same_layout &= field_y.name == "y";
+  same_layout &= field_y.offset == offsetof(PointXYZIRCT, y);
+  same_layout &= field_y.datatype == sensor_msgs::msg::PointField::FLOAT32;
+  same_layout &= field_y.count == 1;
+  const auto & field_z = input.fields.at(static_cast<size_t>(PointIndex::Z));
+  same_layout &= field_z.name == "z";
+  same_layout &= field_z.offset == offsetof(PointXYZIRCT, z);
+  same_layout &= field_z.datatype == sensor_msgs::msg::PointField::FLOAT32;
+  same_layout &= field_z.count == 1;
+  const auto & field_intensity = input.fields.at(static_cast<size_t>(PointIndex::Intensity));
+  same_layout &= field_intensity.name == "intensity";
+  same_layout &= field_intensity.offset == offsetof(PointXYZIRCT, intensity);
+  same_layout &= field_intensity.datatype == sensor_msgs::msg::PointField::UINT8;
+  same_layout &= field_intensity.count == 1;
+  const auto & field_return_type = input.fields.at(static_cast<size_t>(PointIndex::ReturnType));
+  same_layout &= field_return_type.name == "return_type";
+  same_layout &= field_return_type.offset == offsetof(PointXYZIRCT, return_type);
+  same_layout &= field_return_type.datatype == sensor_msgs::msg::PointField::UINT8;
+  same_layout &= field_return_type.count == 1;
+  const auto & field_channel = input.fields.at(static_cast<size_t>(PointIndex::Channel));
+  same_layout &= field_channel.name == "channel";
+  same_layout &= field_channel.offset == offsetof(PointXYZIRCT, channel);
+  same_layout &= field_channel.datatype == sensor_msgs::msg::PointField::UINT16;
+  same_layout &= field_channel.count == 1;
+  const auto & field_time_stamp = input.fields.at(static_cast<size_t>(PointIndex::TimeStamp));
+  same_layout &= field_time_stamp.name == "time_stamp";
+  same_layout &= field_time_stamp.offset == offsetof(PointXYZIRCT, time_stamp);
+  same_layout &= field_time_stamp.datatype == sensor_msgs::msg::PointField::UINT32;
+  same_layout &= field_time_stamp.count == 1;
+  return same_layout;
+}
+
 bool CropBoxFilter::is_data_layout_compatible_with_point_xyziradrt(const PointCloud2 & input)
 {
   using PointIndex = autoware::point_types::PointXYZIRADRTIndex;
@@ -542,10 +588,12 @@ bool CropBoxFilter::is_valid(const PointCloud2ConstPtr & cloud)
   // firstly check the fields of the point cloud
   if (
     !is_data_layout_compatible_with_point_xyzircaedt(*cloud) &&
+    !is_data_layout_compatible_with_point_xyzirct(*cloud) &&
     !is_data_layout_compatible_with_point_xyzirc(*cloud)) {
     RCLCPP_ERROR(
       get_logger(),
-      "The pointcloud layout is not compatible with PointXYZIRCAEDT or PointXYZIRC. Aborting");
+      "The pointcloud layout is not compatible with PointXYZIRCAEDT, PointXYZIRCT or PointXYZIRC. "
+      "Aborting");
 
     if (is_data_layout_compatible_with_point_xyziradrt(*cloud)) {
       RCLCPP_ERROR(

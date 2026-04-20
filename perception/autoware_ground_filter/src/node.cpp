@@ -318,10 +318,12 @@ void GroundFilterComponent::faster_input_indices_callback(
 {
   if (
     !is_data_layout_compatible_with_point_xyzircaedt(*cloud) &&
+    !is_data_layout_compatible_with_point_xyzirct(*cloud) &&
     !is_data_layout_compatible_with_point_xyzirc(*cloud)) {
     RCLCPP_ERROR(
       get_logger(),
-      "The pointcloud layout is not compatible with PointXYZIRCAEDT or PointXYZIRC. Aborting");
+      "The pointcloud layout is not compatible with PointXYZIRCAEDT, PointXYZIRCT or PointXYZIRC. "
+      "Aborting");
 
     if (is_data_layout_compatible_with_point_xyziradrt(*cloud)) {
       RCLCPP_ERROR(
