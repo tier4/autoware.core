@@ -2,7 +2,7 @@
 # Customized: only PRs whose base branch name contains "e2e", and not opened by bots
 # (GitHub user.type Bot, or login/display name containing "bot"; contains() is case-insensitive.)
 
-name: comment-on-pr
+name: comment-on-pr-e2e
 on:
   pull_request:
     types: [opened]
@@ -11,7 +11,7 @@ on:
       - "**e2e**"
 
 jobs:
-  comment-on-pr:
+  comment-on-pr-e2e:
     if: github.event.pull_request.user.type != 'Bot' && !contains(github.event.pull_request.user.login, 'bot') && !contains(github.event.pull_request.user.name, 'bot')
     runs-on: ubuntu-22.04
     permissions:
