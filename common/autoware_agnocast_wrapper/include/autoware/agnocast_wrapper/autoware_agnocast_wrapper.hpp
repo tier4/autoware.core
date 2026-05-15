@@ -22,7 +22,10 @@
 #include "autoware_utils_rclcpp/polling_subscriber.hpp"
 
 #include <agnocast/agnocast.hpp>
+#include <rcl/timer.h>
+#include <rclcpp/exceptions/exceptions.hpp>
 
+#include <chrono>
 #include <cstdlib>
 #include <memory>
 #include <type_traits>
@@ -44,6 +47,11 @@
   typename autoware::agnocast_wrapper::Publisher<MessageT>::SharedPtr
 #define AUTOWARE_POLLING_SUBSCRIBER_PTR(MessageT) \
   typename autoware::agnocast_wrapper::PollingSubscriber<MessageT>::SharedPtr
+#define AUTOWARE_TIMER_PTR autoware::agnocast_wrapper::Timer::SharedPtr
+#define AUTOWARE_CLIENT_PTR(ServiceT) \
+  typename autoware::agnocast_wrapper::Client<ServiceT>::SharedPtr
+#define AUTOWARE_SERVICE_PTR(ServiceT) \
+  typename autoware::agnocast_wrapper::Service<ServiceT>::SharedPtr
 
 #define AUTOWARE_CREATE_SUBSCRIPTION(message_type, topic, qos, callback, options) \
   autoware::agnocast_wrapper::create_subscription<message_type>(this, topic, qos, callback, options)
@@ -592,6 +600,307 @@ typename Publisher<MessageT>::SharedPtr create_publisher(
   }
 }
 
+// ===================== Timer =====================
+// Type-erased wrapper that holds either an agnocast::TimerBase or an rclcpp::TimerBase.
+class Timer
+{
+public:
+  using SharedPtr = std::shared_ptr<Timer>;
+  virtual ~Timer() = default;
+
+  virtual void cancel() = 0;
+  virtual void reset() = 0;
+  virtual bool is_canceled() const = 0;
+  virtual void set_period(std::chrono::nanoseconds period) = 0;
+  virtual std::chrono::nanoseconds time_until_trigger() const = 0;
+};
+
+class AgnocastTimer : public Timer
+{
+  std::shared_ptr<agnocast::TimerBase> timer_;
+
+public:
+  template <typename DurationRepT, typename DurationT, typename CallbackT>
+  AgnocastTimer(
+    agnocast::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
+    CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group)
+  {
+    timer_ = node->create_wall_timer(period, std::forward<CallbackT>(callback), group);
+  }
+
+  void cancel() override { timer_->cancel(); }
+  void reset() override { timer_->reset(); }
+  bool is_canceled() const override { return timer_->is_canceled(); }
+  // set_period throws std::runtime_error on failure (agnocast timerfd_settime failure).
+  void set_period(std::chrono::nanoseconds period) override { timer_->set_period(period); }
+  std::chrono::nanoseconds time_until_trigger() const override
+  {
+    return timer_->time_until_trigger();
+  }
+};
+
+class ROS2Timer : public Timer
+{
+  rclcpp::TimerBase::SharedPtr timer_;
+
+public:
+  template <typename DurationRepT, typename DurationT, typename CallbackT>
+  ROS2Timer(
+    rclcpp::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
+    CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group)
+  {
+    timer_ = rclcpp::create_wall_timer(
+      period, std::forward<CallbackT>(callback), group, node->get_node_base_interface().get(),
+      node->get_node_timers_interface().get());
+  }
+
+  void cancel() override { timer_->cancel(); }
+  void reset() override { timer_->reset(); }
+  bool is_canceled() const override { return timer_->is_canceled(); }
+  // rclcpp::TimerBase does not expose a set_period API; fall back to the rcl C API and
+  // convert the rcl_ret_t to an rclcpp::exceptions::RCLError (matching the throw style used
+  // by the other rclcpp timer methods such as cancel/reset/time_until_trigger).
+  void set_period(std::chrono::nanoseconds period) override
+  {
+    int64_t old_period = 0;
+    const rcl_ret_t ret =
+      rcl_timer_exchange_period(timer_->get_timer_handle().get(), period.count(), &old_period);
+    if (ret != RCL_RET_OK) {
+      rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't exchange_period");
+    }
+  }
+  std::chrono::nanoseconds time_until_trigger() const override
+  {
+    return timer_->time_until_trigger();
+  }
+};
+
+template <typename DurationRepT, typename DurationT, typename CallbackT>
+Timer::SharedPtr create_wall_timer(
+  rclcpp::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
+  CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<ROS2Timer>(
+    node, period, std::forward<CallbackT>(callback), group);
+}
+
+template <typename DurationRepT, typename DurationT, typename CallbackT>
+Timer::SharedPtr create_wall_timer(
+  agnocast::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
+  CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<AgnocastTimer>(
+    node, period, std::forward<CallbackT>(callback), group);
+}
+
+// Forward declaration of Node (defined in node.hpp) so create_timer can accept a wrapper
+// Node pointer. Callers of create_timer should include node.hpp.
+class Node;
+
+template <typename DurationRepT, typename DurationT, typename CallbackT>
+Timer::SharedPtr create_timer(
+  Node * node, std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
+  rclcpp::CallbackGroup::SharedPtr group = nullptr);
+
+// ===================== Client =====================
+// Unified callback signature: receives `std::shared_ptr<const Response>`. In Agnocast mode the
+// underlying ipc_shared_ptr is held alive through an aliased shared_ptr so zero-copy semantics
+// are preserved for the duration the user retains the response.
+template <typename ServiceT>
+class Client
+{
+public:
+  using SharedPtr = std::shared_ptr<Client<ServiceT>>;
+  using Request = typename ServiceT::Request;
+  using Response = typename ServiceT::Response;
+  using SharedRequest = std::shared_ptr<Request>;
+  using SharedResponse = std::shared_ptr<const Response>;
+  using ResponseCallback = std::function<void(SharedResponse)>;
+
+  virtual ~Client() = default;
+  virtual bool wait_for_service(std::chrono::nanoseconds timeout) = 0;
+  virtual void async_send_request(
+    const SharedRequest & request, ResponseCallback callback) = 0;
+};
+
+template <typename ServiceT>
+class AgnocastClient : public Client<ServiceT>
+{
+  typename agnocast::Client<ServiceT>::SharedPtr client_;
+
+public:
+  AgnocastClient(
+    agnocast::Node * node, const std::string & service_name, const rclcpp::QoS & qos,
+    rclcpp::CallbackGroup::SharedPtr group)
+  : client_(node->template create_client<ServiceT>(service_name, qos, group))
+  {
+  }
+
+  bool wait_for_service(std::chrono::nanoseconds timeout) override
+  {
+    return client_->wait_for_service(timeout);
+  }
+
+  void async_send_request(
+    const typename Client<ServiceT>::SharedRequest & request,
+    typename Client<ServiceT>::ResponseCallback callback) override
+  {
+    // agnocast::Client expects an ipc_shared_ptr<Request>; borrow a loaned request and copy
+    // the caller's data into shared memory. The copy is acceptable because service calls
+    // are low-frequency; bulk IPC payloads should use pub/sub instead.
+    auto ipc_request = client_->borrow_loaned_request();
+    // ipc_request points at agnocast::Client::RequestT, which derives from ServiceT::Request.
+    // Cast to the base so the generated message assignment operator is callable.
+    static_cast<typename ServiceT::Request &>(*ipc_request) = *request;
+    client_->async_send_request(
+      std::move(ipc_request),
+      [cb = std::move(callback)](typename agnocast::Client<ServiceT>::SharedFuture future) {
+        auto ipc_ptr = future.get();
+        auto holder =
+          std::make_shared<agnocast::ipc_shared_ptr<typename ServiceT::Response>>(
+            std::move(ipc_ptr));
+        cb(std::shared_ptr<const typename ServiceT::Response>(holder, holder->get()));
+      });
+  }
+};
+
+template <typename ServiceT>
+class ROS2Client : public Client<ServiceT>
+{
+  typename rclcpp::Client<ServiceT>::SharedPtr client_;
+
+public:
+  ROS2Client(
+    rclcpp::Node * node, const std::string & service_name, const rclcpp::QoS & qos,
+    rclcpp::CallbackGroup::SharedPtr group)
+  : client_(node->template create_client<ServiceT>(
+      service_name, qos.get_rmw_qos_profile(), group))
+  {
+  }
+
+  bool wait_for_service(std::chrono::nanoseconds timeout) override
+  {
+    return client_->wait_for_service(timeout);
+  }
+
+  void async_send_request(
+    const typename Client<ServiceT>::SharedRequest & request,
+    typename Client<ServiceT>::ResponseCallback callback) override
+  {
+    client_->async_send_request(
+      request,
+      [cb = std::move(callback)](typename rclcpp::Client<ServiceT>::SharedFuture future) {
+        cb(future.get());
+      });
+  }
+};
+
+template <typename ServiceT>
+typename Client<ServiceT>::SharedPtr create_client(
+  rclcpp::Node * node, const std::string & service_name,
+  const rclcpp::QoS & qos = rclcpp::ServicesQoS(),
+  rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<ROS2Client<ServiceT>>(node, service_name, qos, group);
+}
+
+template <typename ServiceT>
+typename Client<ServiceT>::SharedPtr create_client(
+  agnocast::Node * node, const std::string & service_name,
+  const rclcpp::QoS & qos = rclcpp::ServicesQoS(),
+  rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<AgnocastClient<ServiceT>>(node, service_name, qos, group);
+}
+
+// ===================== Service =====================
+// Unified callback signature: `void(std::shared_ptr<Request const>, std::shared_ptr<Response>)`.
+// In Agnocast mode the underlying ipc_shared_ptrs are wrapped in aliased std::shared_ptr so
+// the user-supplied callback writes directly into the shared-memory response.
+template <typename ServiceT>
+class Service
+{
+public:
+  using SharedPtr = std::shared_ptr<Service<ServiceT>>;
+  using Request = typename ServiceT::Request;
+  using Response = typename ServiceT::Response;
+  using SharedRequest = std::shared_ptr<const Request>;
+  using SharedResponse = std::shared_ptr<Response>;
+  using CallbackType = std::function<void(SharedRequest, SharedResponse)>;
+
+  virtual ~Service() = default;
+};
+
+template <typename ServiceT>
+class AgnocastService : public Service<ServiceT>
+{
+  typename agnocast::Service<ServiceT>::SharedPtr service_;
+
+public:
+  AgnocastService(
+    agnocast::Node * node, const std::string & service_name,
+    typename Service<ServiceT>::CallbackType callback, const rclcpp::QoS & qos,
+    rclcpp::CallbackGroup::SharedPtr group)
+  {
+    service_ = node->template create_service<ServiceT>(
+      service_name,
+      [cb = std::move(callback)](
+        const agnocast::ipc_shared_ptr<const typename ServiceT::Request> & req,
+        agnocast::ipc_shared_ptr<typename ServiceT::Response> & res) {
+        // Non-owning aliases so the callback can read/write through shared_ptr while the
+        // underlying ipc_shared_ptr continues to own the memory.
+        auto req_alias =
+          std::shared_ptr<const typename ServiceT::Request>(std::shared_ptr<void>{}, req.get());
+        auto res_alias =
+          std::shared_ptr<typename ServiceT::Response>(std::shared_ptr<void>{}, res.get());
+        cb(req_alias, res_alias);
+      },
+      qos, group);
+  }
+};
+
+template <typename ServiceT>
+class ROS2Service : public Service<ServiceT>
+{
+  typename rclcpp::Service<ServiceT>::SharedPtr service_;
+
+public:
+  ROS2Service(
+    rclcpp::Node * node, const std::string & service_name,
+    typename Service<ServiceT>::CallbackType callback, const rclcpp::QoS & qos,
+    rclcpp::CallbackGroup::SharedPtr group)
+  {
+    service_ = node->template create_service<ServiceT>(
+      service_name,
+      [cb = std::move(callback)](
+        const std::shared_ptr<typename ServiceT::Request> req,
+        std::shared_ptr<typename ServiceT::Response> res) { cb(req, res); },
+      qos.get_rmw_qos_profile(), group);
+  }
+};
+
+template <typename ServiceT>
+typename Service<ServiceT>::SharedPtr create_service(
+  rclcpp::Node * node, const std::string & service_name,
+  typename Service<ServiceT>::CallbackType callback,
+  const rclcpp::QoS & qos = rclcpp::ServicesQoS(),
+  rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<ROS2Service<ServiceT>>(
+    node, service_name, std::move(callback), qos, group);
+}
+
+template <typename ServiceT>
+typename Service<ServiceT>::SharedPtr create_service(
+  agnocast::Node * node, const std::string & service_name,
+  typename Service<ServiceT>::CallbackType callback,
+  const rclcpp::QoS & qos = rclcpp::ServicesQoS(),
+  rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<AgnocastService<ServiceT>>(
+    node, service_name, std::move(callback), qos, group);
+}
+
 }  // namespace autoware::agnocast_wrapper
 
 #else
@@ -599,9 +908,71 @@ typename Publisher<MessageT>::SharedPtr create_publisher(
 #include "autoware_utils_rclcpp/polling_subscriber.hpp"
 
 #include <rclcpp/rclcpp.hpp>
+#include <rcl/timer.h>
+#include <rclcpp/exceptions/exceptions.hpp>
 
+#include <chrono>
 #include <memory>
 #include <type_traits>
+
+namespace autoware::agnocast_wrapper
+{
+
+// Type-erased timer wrapper (rclcpp-only build). Mirrors the agnocast-build API so
+// callers can use the same Timer::SharedPtr type regardless of build mode.
+class Timer
+{
+public:
+  using SharedPtr = std::shared_ptr<Timer>;
+  virtual ~Timer() = default;
+
+  virtual void cancel() = 0;
+  virtual void reset() = 0;
+  virtual bool is_canceled() const = 0;
+  virtual void set_period(std::chrono::nanoseconds period) = 0;
+  virtual std::chrono::nanoseconds time_until_trigger() const = 0;
+};
+
+class ROS2Timer : public Timer
+{
+  rclcpp::TimerBase::SharedPtr timer_;
+
+public:
+  explicit ROS2Timer(rclcpp::TimerBase::SharedPtr timer) : timer_(std::move(timer)) {}
+
+  void cancel() override { timer_->cancel(); }
+  void reset() override { timer_->reset(); }
+  bool is_canceled() const override { return timer_->is_canceled(); }
+  // rclcpp::TimerBase does not expose a set_period API; fall back to the rcl C API and
+  // convert the rcl_ret_t to an rclcpp::exceptions::RCLError (matching the throw style used
+  // by the other rclcpp timer methods such as cancel/reset/time_until_trigger).
+  void set_period(std::chrono::nanoseconds period) override
+  {
+    int64_t old_period = 0;
+    const rcl_ret_t ret =
+      rcl_timer_exchange_period(timer_->get_timer_handle().get(), period.count(), &old_period);
+    if (ret != RCL_RET_OK) {
+      rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't exchange_period");
+    }
+  }
+  std::chrono::nanoseconds time_until_trigger() const override
+  {
+    return timer_->time_until_trigger();
+  }
+};
+
+template <typename DurationRepT, typename DurationT, typename CallbackT>
+Timer::SharedPtr create_timer(
+  rclcpp::Node * node, std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
+  rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  auto t = rclcpp::create_wall_timer(
+    period, std::forward<CallbackT>(callback), group, node->get_node_base_interface().get(),
+    node->get_node_timers_interface().get());
+  return std::make_shared<ROS2Timer>(std::move(t));
+}
+
+}  // namespace autoware::agnocast_wrapper
 
 #define AUTOWARE_MESSAGE_UNIQUE_PTR(MessageT) std::unique_ptr<MessageT>
 // For publisher (mutable message)
@@ -612,6 +983,9 @@ typename Publisher<MessageT>::SharedPtr create_publisher(
 #define AUTOWARE_PUBLISHER_PTR(MessageT) typename rclcpp::Publisher<MessageT>::SharedPtr
 #define AUTOWARE_POLLING_SUBSCRIBER_PTR(MessageT) \
   typename autoware_utils_rclcpp::InterProcessPollingSubscriber<MessageT>::SharedPtr
+#define AUTOWARE_TIMER_PTR rclcpp::TimerBase::SharedPtr
+#define AUTOWARE_CLIENT_PTR(ServiceT) typename rclcpp::Client<ServiceT>::SharedPtr
+#define AUTOWARE_SERVICE_PTR(ServiceT) typename rclcpp::Service<ServiceT>::SharedPtr
 
 #define AUTOWARE_CREATE_SUBSCRIPTION(message_type, topic, qos, callback, options) \
   this->create_subscription<message_type>(topic, qos, callback, options)

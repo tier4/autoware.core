@@ -15,9 +15,11 @@
 #pragma once
 
 #include "autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp"
+#include "autoware/agnocast_wrapper/node.hpp"
 
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/sync_policies/exact_time.h>
 #include <message_filters/synchronizer.h>
 
 #include <functional>
@@ -29,6 +31,7 @@
 
 #include <agnocast/message_filters/subscriber.hpp>
 #include <agnocast/message_filters/sync_policies/approximate_time.hpp>
+#include <agnocast/message_filters/sync_policies/exact_time.hpp>
 #include <agnocast/message_filters/synchronizer.hpp>
 
 namespace autoware::agnocast_wrapper
@@ -38,6 +41,12 @@ namespace message_filters
 
 /// @brief Wrapper message_filters Subscriber that switches between
 ///        rclcpp and agnocast message_filters at runtime.
+///
+/// Accepts an `autoware::agnocast_wrapper::Node *` so that nodes inheriting the wrapper Node
+/// can use the message_filters API. Internally dispatches to the correct underlying node:
+/// - agnocast mode: `node->get_agnocast_node()` fed to `agnocast::message_filters::Subscriber<M,
+///   agnocast::Node>`
+/// - rclcpp mode:   `node->get_rclcpp_node()`  fed to `::message_filters::Subscriber<M>`
 template <class M>
 class Subscriber
 {
@@ -45,30 +54,43 @@ public:
   Subscriber() = default;
 
   Subscriber(
-    rclcpp::Node * node, const std::string & topic,
+    autoware::agnocast_wrapper::Node * node, const std::string & topic,
     const rmw_qos_profile_t qos = rmw_qos_profile_default)
   {
     subscribe(node, topic, qos);
   }
 
   void subscribe(
-    rclcpp::Node * node, const std::string & topic,
+    autoware::agnocast_wrapper::Node * node, const std::string & topic,
     const rmw_qos_profile_t qos = rmw_qos_profile_default)
   {
     if (use_agnocast()) {
-      agnocast_sub_.subscribe(node, topic, qos);
+      agnocast_sub_.subscribe(node->get_agnocast_node().get(), topic, qos);
     } else {
-      rclcpp_sub_.subscribe(node, topic, qos);
+      rclcpp_sub_.subscribe(node->get_rclcpp_node().get(), topic, qos);
     }
   }
 
-  // Internal API: used by ApproximateTimeSynchronizer. Not intended for downstream use.
+  void unsubscribe()
+  {
+    if (use_agnocast()) {
+      agnocast_sub_.unsubscribe();
+    } else {
+      rclcpp_sub_.unsubscribe();
+    }
+  }
+
+  // Internal API: used by ApproximateTimeSynchronizer / ExactTimeSynchronizer.
+  // Not intended for downstream use.
   ::message_filters::Subscriber<M> & rclcpp_subscriber() { return rclcpp_sub_; }
-  agnocast::message_filters::Subscriber<M> & agnocast_subscriber() { return agnocast_sub_; }
+  agnocast::message_filters::Subscriber<M, agnocast::Node> & agnocast_subscriber()
+  {
+    return agnocast_sub_;
+  }
 
 private:
   ::message_filters::Subscriber<M> rclcpp_sub_;
-  agnocast::message_filters::Subscriber<M> agnocast_sub_;
+  agnocast::message_filters::Subscriber<M, agnocast::Node> agnocast_sub_;
 };
 
 /// @brief Wrapper ApproximateTime Synchronizer that switches between
@@ -165,6 +187,70 @@ private:
   std::unique_ptr<AgnocastSync> agnocast_sync_;
 };
 
+/// @brief Wrapper ExactTime Synchronizer mirroring ApproximateTimeSynchronizer.
+///
+/// Same callback signature and zero-copy semantics as ApproximateTimeSynchronizer;
+/// only the sync policy differs.
+template <typename M0, typename M1>
+class ExactTimeSynchronizer
+{
+public:
+  using Callback = std::function<void(
+    const AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0) &, const AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1) &)>;
+
+  ExactTimeSynchronizer(uint32_t queue_size, Subscriber<M0> & sub0, Subscriber<M1> & sub1)
+  {
+    if (use_agnocast()) {
+      agnocast_sync_ = std::make_unique<AgnocastSync>(
+        AgnocastPolicy(queue_size), sub0.agnocast_subscriber(), sub1.agnocast_subscriber());
+    } else {
+      rclcpp_sync_ = std::make_unique<RclcppSync>(
+        RclcppPolicy(queue_size), sub0.rclcpp_subscriber(), sub1.rclcpp_subscriber());
+    }
+  }
+
+  void registerCallback(Callback callback)
+  {
+    stored_callback_ = std::move(callback);
+    if (use_agnocast()) {
+      agnocast_sync_->registerCallback(&ExactTimeSynchronizer::agnocastCallbackAdapter, this);
+    } else {
+      rclcpp_sync_->registerCallback(&ExactTimeSynchronizer::rclcppCallbackAdapter, this);
+    }
+  }
+
+private:
+  Callback stored_callback_;
+
+  using M0Event = agnocast::message_filters::MessageEvent<const M0>;
+  using M1Event = agnocast::message_filters::MessageEvent<const M1>;
+
+  void agnocastCallbackAdapter(const M0Event & e0, const M1Event & e1)
+  {
+    const auto p0 =
+      AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0)(agnocast::ipc_shared_ptr<const M0>(e0.getMessage()));
+    const auto p1 =
+      AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1)(agnocast::ipc_shared_ptr<const M1>(e1.getMessage()));
+    stored_callback_(p0, p1);
+  }
+
+  void rclcppCallbackAdapter(
+    const typename M0::ConstSharedPtr & m0, const typename M1::ConstSharedPtr & m1)
+  {
+    const auto p0 = AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0)(std::shared_ptr<const M0>(m0));
+    const auto p1 = AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1)(std::shared_ptr<const M1>(m1));
+    stored_callback_(p0, p1);
+  }
+
+  using RclcppPolicy = ::message_filters::sync_policies::ExactTime<M0, M1>;
+  using RclcppSync = ::message_filters::Synchronizer<RclcppPolicy>;
+  std::unique_ptr<RclcppSync> rclcpp_sync_;
+
+  using AgnocastPolicy = agnocast::message_filters::sync_policies::ExactTime<M0, M1>;
+  using AgnocastSync = agnocast::message_filters::Synchronizer<AgnocastPolicy>;
+  std::unique_ptr<AgnocastSync> agnocast_sync_;
+};
+
 /// @brief Policy and Synchronizer types that mirror the rclcpp message_filters API.
 ///        Allows node code to use the same pattern as rclcpp:
 ///          using SyncPolicy = sync_policies::ApproximateTime<M0, M1>;
@@ -178,16 +264,23 @@ struct ApproximateTime
   uint32_t queue_size;
   explicit ApproximateTime(uint32_t qs) : queue_size(qs) {}
 };
+
+template <typename M0, typename M1>
+struct ExactTime
+{
+  uint32_t queue_size;
+  explicit ExactTime(uint32_t qs) : queue_size(qs) {}
+};
 }  // namespace sync_policies
 
-/// @brief Primary Synchronizer template — only the ApproximateTime specialization is supported.
+/// @brief Primary Synchronizer template — supports ApproximateTime and ExactTime specializations.
 template <typename Policy>
 class Synchronizer
 {
   static_assert(
     sizeof(Policy) == 0,
-    "Only sync_policies::ApproximateTime<M0, M1> is supported. "
-    "ExactTime and policies with more than 2 message types are not implemented.");
+    "Only sync_policies::ApproximateTime<M0, M1> and sync_policies::ExactTime<M0, M1> "
+    "are supported. Policies with more than 2 message types are not implemented.");
 };
 
 template <typename M0, typename M1>
@@ -198,6 +291,17 @@ public:
   Synchronizer(
     sync_policies::ApproximateTime<M0, M1> policy, Subscriber<M0> & sub0, Subscriber<M1> & sub1)
   : ApproximateTimeSynchronizer<M0, M1>(policy.queue_size, sub0, sub1)
+  {
+  }
+};
+
+template <typename M0, typename M1>
+class Synchronizer<sync_policies::ExactTime<M0, M1>> : public ExactTimeSynchronizer<M0, M1>
+{
+public:
+  Synchronizer(
+    sync_policies::ExactTime<M0, M1> policy, Subscriber<M0> & sub0, Subscriber<M1> & sub1)
+  : ExactTimeSynchronizer<M0, M1>(policy.queue_size, sub0, sub1)
   {
   }
 };
@@ -221,10 +325,16 @@ template <typename M0, typename M1>
 using ApproximateTimeSynchronizer =
   ::message_filters::Synchronizer<::message_filters::sync_policies::ApproximateTime<M0, M1>>;
 
+template <typename M0, typename M1>
+using ExactTimeSynchronizer =
+  ::message_filters::Synchronizer<::message_filters::sync_policies::ExactTime<M0, M1>>;
+
 namespace sync_policies
 {
 template <typename M0, typename M1>
 using ApproximateTime = ::message_filters::sync_policies::ApproximateTime<M0, M1>;
+template <typename M0, typename M1>
+using ExactTime = ::message_filters::sync_policies::ExactTime<M0, M1>;
 }  // namespace sync_policies
 
 template <typename Policy>

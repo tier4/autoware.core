@@ -14,6 +14,9 @@
 
 #include "autoware/agnocast_wrapper/node.hpp"
 
+#include <rclcpp/node_interfaces/node_graph.hpp>
+#include <rclcpp/node_interfaces/node_timers.hpp>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -83,6 +86,53 @@ rclcpp::node_interfaces::NodeParametersInterface::SharedPtr Node::get_node_param
   const
 {
   return visit_node([](const auto & n) { return n->get_node_parameters_interface(); });
+}
+
+rclcpp::node_interfaces::NodeClockInterface::SharedPtr Node::get_node_clock_interface()
+{
+  return visit_node([](auto & n) { return n->get_node_clock_interface(); });
+}
+
+rclcpp::node_interfaces::NodeLoggingInterface::SharedPtr Node::get_node_logging_interface()
+{
+  return visit_node([](auto & n) { return n->get_node_logging_interface(); });
+}
+
+rclcpp::node_interfaces::NodeServicesInterface::SharedPtr Node::get_node_services_interface()
+{
+  return visit_node([](auto & n) { return n->get_node_services_interface(); });
+}
+
+rclcpp::node_interfaces::NodeGraphInterface::SharedPtr Node::get_node_graph_interface()
+{
+  return visit_node([](auto & n) -> rclcpp::node_interfaces::NodeGraphInterface::SharedPtr {
+    using NodeT = std::decay_t<decltype(*n)>;
+    if constexpr (std::is_same_v<NodeT, rclcpp::Node>) {
+      return n->get_node_graph_interface();
+    } else {
+      // agnocast::Node has no NodeGraphInterface; synthesize one from its NodeBaseInterface.
+      // NodeGraph only holds a raw pointer to NodeBaseInterface; it's fine to create on demand
+      // because the underlying NodeBaseInterface is owned by the agnocast::Node.
+      return std::make_shared<rclcpp::node_interfaces::NodeGraph>(
+        n->get_node_base_interface().get());
+    }
+  });
+}
+
+rclcpp::node_interfaces::NodeTimersInterface::SharedPtr Node::get_node_timers_interface()
+{
+  return visit_node([](auto & n) -> rclcpp::node_interfaces::NodeTimersInterface::SharedPtr {
+    using NodeT = std::decay_t<decltype(*n)>;
+    if constexpr (std::is_same_v<NodeT, rclcpp::Node>) {
+      return n->get_node_timers_interface();
+    } else {
+      // agnocast::Node has no NodeTimersInterface; synthesize one from its NodeBaseInterface.
+      // NodeTimers is stateless wrt timer storage (timers are retained by their CallbackGroup),
+      // so building a fresh one per call is safe.
+      return std::make_shared<rclcpp::node_interfaces::NodeTimers>(
+        n->get_node_base_interface().get());
+    }
+  });
 }
 
 rclcpp::CallbackGroup::SharedPtr Node::create_callback_group(
