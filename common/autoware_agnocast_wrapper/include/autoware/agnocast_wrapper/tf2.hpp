@@ -61,6 +61,18 @@ public:
 #endif
   }
 
+  /// @brief Buffer-only constructor; the underlying listener creates its own node internally.
+  explicit TransformListener(tf2::BufferCore & buffer, bool spin_thread = true)
+  {
+#ifdef USE_AGNOCAST_ENABLED
+    if (use_agnocast()) {
+      agnocast_impl_ = std::make_unique<agnocast::TransformListener>(buffer, spin_thread);
+      return;
+    }
+#endif
+    ros2_impl_ = std::make_unique<tf2_ros::TransformListener>(buffer, spin_thread);
+  }
+
   ~TransformListener() = default;
 
   TransformListener(const TransformListener &) = delete;
