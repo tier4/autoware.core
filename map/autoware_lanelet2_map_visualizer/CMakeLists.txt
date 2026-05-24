@@ -4,9 +4,14 @@ project(autoware_lanelet2_map_visualizer)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+ament_auto_add_library(lanelet2_map_visualization SHARED
+  src/lanelet2_map_visualization.cpp
+)
+
 ament_auto_add_library(lanelet2_map_visualization_node SHARED
   src/lanelet2_map_visualization_node.cpp
 )
+target_link_libraries(lanelet2_map_visualization_node lanelet2_map_visualization)
 
 rclcpp_components_register_node(lanelet2_map_visualization_node
   PLUGIN "autoware::lanelet2_map_visualizer::Lanelet2MapVisualizationNode"
@@ -34,6 +39,11 @@ if(BUILD_TESTING)
   )
 
   find_package(launch_testing_ament_cmake REQUIRED)
+  install(
+    FILES ../autoware_map_loader/test/data/test_map.osm
+    DESTINATION share/${PROJECT_NAME}/test/data/
+  )
+
   add_launch_test(
     test/lanelet2_map_visualizer_launch.test.py
     TIMEOUT "30"

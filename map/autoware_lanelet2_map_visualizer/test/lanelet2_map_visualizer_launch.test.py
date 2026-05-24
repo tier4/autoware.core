@@ -28,7 +28,8 @@ import pytest
 @pytest.mark.launch_test
 def generate_test_description():
     lanelet2_map_path = os.path.join(
-        get_package_share_directory("autoware_map_loader"), "test/data/test_map.osm"
+        get_package_share_directory("autoware_lanelet2_map_visualizer"),
+        "test/data/test_map.osm",
     )
 
     # First launch the map loader node to publish the lanelet2 map
