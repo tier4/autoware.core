@@ -15,6 +15,7 @@
 #include "node.hpp"
 
 #include <autoware/motion_utils/resample/resample.hpp>
+#include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/velocity_smoother/smoother/analytical_jerk_constrained_smoother/analytical_jerk_constrained_smoother.hpp>
 #include <autoware/velocity_smoother/trajectory_utils.hpp>
@@ -375,8 +376,8 @@ void MotionVelocityPlannerNode::insert_stop(
   const double overlap_threshold = 5e-2;
   const auto seg_idx =
     autoware::motion_utils::findNearestSegmentIndex(trajectory.points, stop_point);
-  const auto insert_idx =
-    autoware::motion_utils::insertTargetPoint(seg_idx, stop_point, trajectory.points, overlap_threshold);
+  const auto insert_idx = autoware::motion_utils::insertTargetPoint(
+    seg_idx, stop_point, trajectory.points, overlap_threshold);
   if (insert_idx) {
     for (auto idx = *insert_idx; idx < trajectory.points.size(); ++idx)
       trajectory.points[idx].longitudinal_velocity_mps = 0.0;
@@ -451,6 +452,9 @@ autoware_planning_msgs::msg::Trajectory MotionVelocityPlannerNode::generate_traj
   autoware_planning_msgs::msg::Trajectory output_trajectory_msg;
   output_trajectory_msg.points = {input_trajectory_points.begin(), input_trajectory_points.end()};
 
+  auto input_dist = autoware::motion_utils::calcDistanceToForwardStopPoint(input_trajectory_points);
+  std::cerr << "mvp" << __LINE__ << ", input_dist: " << input_dist.value_or(0.0) << std::endl;
+
   stop_watch.tic("smooth");
   const auto smoothed_trajectory_points = [&]() {
     if (smooth_velocity_before_planning_) {
@@ -498,6 +502,10 @@ autoware_planning_msgs::msg::Trajectory MotionVelocityPlannerNode::generate_traj
       clear_velocity_limit_pub_->publish(*planning_result.velocity_limit_clear_command);
     }
   }
+
+  auto output_points = autoware::motion_utils::convertToTrajectoryPointArray(output_trajectory_msg);
+  auto output_dist = autoware::motion_utils::calcDistanceToForwardStopPoint(output_points);
+  std::cerr << "mvp" << __LINE__ << ", output_dist: " << output_dist.value_or(0.0) << std::endl;
 
   return output_trajectory_msg;
 }

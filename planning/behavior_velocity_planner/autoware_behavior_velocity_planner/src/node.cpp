@@ -14,6 +14,9 @@
 
 #include "autoware/behavior_velocity_planner/node.hpp"
 
+#include "autoware/motion_utils/trajectory/conversion.hpp"
+#include "autoware/motion_utils/trajectory/trajectory.hpp"
+
 #include <autoware/behavior_velocity_planner_common/utilization/path_utilization.hpp>
 #include <autoware/motion_utils/trajectory/path_with_lane_id.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -327,10 +330,28 @@ void BehaviorVelocityPlannerNode::onTrigger(
     return;
   }
 
+  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> converted_points;
+  converted_points.reserve(input_path_msg->points.size());
+
+  for (const auto & p : input_path_msg->points) {
+    autoware_planning_msgs::msg::TrajectoryPoint tp;
+    tp.pose = p.point.pose;
+    tp.longitudinal_velocity_mps = p.point.longitudinal_velocity_mps;
+    tp.lateral_velocity_mps = p.point.lateral_velocity_mps;
+    tp.heading_rate_rps = p.point.heading_rate_rps;
+    converted_points.push_back(tp);
+  }
+
+  auto input_dist = autoware::motion_utils::calcDistanceToForwardStopPoint(converted_points);
+  std::cerr << "bvp" << __LINE__ << ", input_dist: " << input_dist.value_or(0.0) << std::endl;
+
   const autoware_planning_msgs::msg::Path output_path_msg =
     generatePath(input_path_msg, planner_data_);
 
   lk.unlock();
+
+  auto output_dist = autoware::motion_utils::calcDistanceToForwardStopPoint(output_path_msg.points);
+  std::cerr << "bvp" << __LINE__ << ", output_dist: " << output_dist.value_or(0.0) << std::endl;
 
   path_pub_->publish(output_path_msg);
   published_time_publisher_->publish_if_subscribed(path_pub_, output_path_msg.header.stamp);
