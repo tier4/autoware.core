@@ -18,7 +18,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <glog/logging.h>
 
 #include "agnocast/agnocast.hpp"
 #include "@_AWR_agnocast_executor_include@"
@@ -32,9 +31,6 @@
 
 int main(int argc, char * argv[])
 {
-  google::InitGoogleLogging(argv[0]);
-  google::InstallFailureSignalHandler();
-
   constexpr bool agnocast_only = @_AWR_agnocast_only@;
   const bool use_agnocast = autoware::agnocast_wrapper::use_agnocast();
   const bool is_agnocast_only_mode = use_agnocast && agnocast_only;
