@@ -476,6 +476,9 @@ void VelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstSharedPtr 
   // calculate trajectory velocity
   auto input_points = autoware::motion_utils::convertToTrajectoryPointArray(*base_traj_raw_ptr_);
 
+  auto input_dist = autoware::motion_utils::calcDistanceToForwardStopPoint(input_points);
+  std::cerr << "v_smoother" << __LINE__ << ", input_dist: " << input_dist.value_or(0.0) << std::endl;
+
   // guard for invalid trajectory
   input_points = autoware::motion_utils::removeOverlapPoints(input_points);
   if (input_points.size() < 2) {
@@ -530,6 +533,13 @@ void VelocitySmootherNode::onCurrentTrajectory(const Trajectory::ConstSharedPtr 
 
   // publish message
   publishTrajectory(output_resampled);
+
+  auto output_dist = autoware::motion_utils::calcDistanceToForwardStopPoint(output);
+  std::cerr << "v_smoother" << __LINE__ << ", output_dist: " << output_dist.value_or(0.0) << std::endl;
+
+  auto output_resampled_dist =
+    autoware::motion_utils::calcDistanceToForwardStopPoint(output_resampled);
+  std::cerr << "v_smoother" << __LINE__ << ", output_resampled_dist: " << output_resampled_dist.value_or(0.0) << std::endl;
 
   // publish debug message
   publishStopDistance(output);
