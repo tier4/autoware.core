@@ -48,10 +48,12 @@
 #define AUTOWARE_POLLING_SUBSCRIBER_PTR(MessageT) \
   typename autoware::agnocast_wrapper::PollingSubscriber<MessageT>::SharedPtr
 #define AUTOWARE_TIMER_PTR autoware::agnocast_wrapper::Timer::SharedPtr
+#if 0  // Client/Service wrappers disabled for the initial port.
 #define AUTOWARE_CLIENT_PTR(ServiceT) \
   typename autoware::agnocast_wrapper::Client<ServiceT>::SharedPtr
 #define AUTOWARE_SERVICE_PTR(ServiceT) \
   typename autoware::agnocast_wrapper::Service<ServiceT>::SharedPtr
+#endif
 
 #define AUTOWARE_CREATE_SUBSCRIPTION(message_type, topic, qos, callback, options) \
   autoware::agnocast_wrapper::create_subscription<message_type>(this, topic, qos, callback, options)
@@ -61,6 +63,10 @@
   autoware::agnocast_wrapper::create_publisher<message_type>(this, arg1, arg2, arg3)
 #define AUTOWARE_CREATE_POLLING_SUBSCRIBER(message_type, topic, qos) \
   autoware::agnocast_wrapper::create_polling_subscriber<message_type>(this, topic, qos)
+#define AUTOWARE_CREATE_TIMER(period, callback) \
+  autoware::agnocast_wrapper::create_timer(this, period, callback)
+#define AUTOWARE_CREATE_WALL_TIMER(period, callback) \
+  autoware::agnocast_wrapper::create_wall_timer(this, period, callback)
 
 #define AUTOWARE_SUBSCRIPTION_OPTIONS agnocast::SubscriptionOptions
 #define AUTOWARE_PUBLISHER_OPTIONS agnocast::PublisherOptions
@@ -224,18 +230,24 @@ public:
   using SharedPtr = std::shared_ptr<Subscription<MessageT>>;
 
   virtual ~Subscription() = default;
+
+  virtual const std::string & get_topic_name() const = 0;
 };
 
 template <typename MessageT>
 class AgnocastSubscription : public Subscription<MessageT>
 {
   typename agnocast::Subscription<MessageT>::SharedPtr subscription_;
+  std::string topic_name_;
 
 public:
+  const std::string & get_topic_name() const override { return topic_name_; }
+
   template <typename NodeT, typename Func>
   explicit AgnocastSubscription(
     NodeT * node, const std::string & topic_name, const rclcpp::QoS & qos, Func && callback,
     const agnocast::SubscriptionOptions & options)
+  : topic_name_(topic_name)
   {
     // TODO(Koichi98): AUTOWARE_MESSAGE_UNIQUE_PTR should be disallowed for Agnocast subscriptions.
     // Agnocast uses shared memory, so mutable exclusive ownership is semantically incorrect and
@@ -271,12 +283,16 @@ template <typename MessageT>
 class ROS2Subscription : public Subscription<MessageT>
 {
   typename rclcpp::Subscription<MessageT>::SharedPtr subscription_;
+  std::string topic_name_;
 
 public:
+  const std::string & get_topic_name() const override { return topic_name_; }
+
   template <typename Func>
   explicit ROS2Subscription(
     rclcpp::Node * node, const std::string & topic_name, const rclcpp::QoS & qos, Func && callback,
     const agnocast::SubscriptionOptions & options)
+  : topic_name_(topic_name)
   {
     static_assert(
       std::is_invocable_v<std::decay_t<Func>, AUTOWARE_MESSAGE_UNIQUE_PTR(MessageT) &&> ||
@@ -600,8 +616,6 @@ typename Publisher<MessageT>::SharedPtr create_publisher(
   }
 }
 
-// ===================== Timer =====================
-// Type-erased wrapper that holds either an agnocast::TimerBase or an rclcpp::TimerBase.
 class Timer
 {
 public:
@@ -620,18 +634,11 @@ class AgnocastTimer : public Timer
   std::shared_ptr<agnocast::TimerBase> timer_;
 
 public:
-  template <typename DurationRepT, typename DurationT, typename CallbackT>
-  AgnocastTimer(
-    agnocast::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
-    CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group)
-  {
-    timer_ = node->create_wall_timer(period, std::forward<CallbackT>(callback), group);
-  }
+  explicit AgnocastTimer(std::shared_ptr<agnocast::TimerBase> timer) : timer_(std::move(timer)) {}
 
   void cancel() override { timer_->cancel(); }
   void reset() override { timer_->reset(); }
   bool is_canceled() const override { return timer_->is_canceled(); }
-  // set_period throws std::runtime_error on failure (agnocast timerfd_settime failure).
   void set_period(std::chrono::nanoseconds period) override { timer_->set_period(period); }
   std::chrono::nanoseconds time_until_trigger() const override
   {
@@ -644,15 +651,7 @@ class ROS2Timer : public Timer
   rclcpp::TimerBase::SharedPtr timer_;
 
 public:
-  template <typename DurationRepT, typename DurationT, typename CallbackT>
-  ROS2Timer(
-    rclcpp::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
-    CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group)
-  {
-    timer_ = rclcpp::create_wall_timer(
-      period, std::forward<CallbackT>(callback), group, node->get_node_base_interface().get(),
-      node->get_node_timers_interface().get());
-  }
+  explicit ROS2Timer(rclcpp::TimerBase::SharedPtr timer) : timer_(std::move(timer)) {}
 
   void cancel() override { timer_->cancel(); }
   void reset() override { timer_->reset(); }
@@ -676,12 +675,31 @@ public:
 };
 
 template <typename DurationRepT, typename DurationT, typename CallbackT>
+Timer::SharedPtr create_timer(
+  rclcpp::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
+  CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<ROS2Timer>(rclcpp::create_timer(
+    node, node->get_clock(), period, std::forward<CallbackT>(callback), group));
+}
+
+template <typename DurationRepT, typename DurationT, typename CallbackT>
+Timer::SharedPtr create_timer(
+  agnocast::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
+  CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<AgnocastTimer>(agnocast::create_timer(
+    node, node->get_clock(), rclcpp::Duration(period),
+    std::forward<CallbackT>(callback), group));
+}
+
+template <typename DurationRepT, typename DurationT, typename CallbackT>
 Timer::SharedPtr create_wall_timer(
   rclcpp::Node * node, std::chrono::duration<DurationRepT, DurationT> period,
   CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group = nullptr)
 {
   return std::make_shared<ROS2Timer>(
-    node, period, std::forward<CallbackT>(callback), group);
+    node->create_wall_timer(period, std::forward<CallbackT>(callback), group));
 }
 
 template <typename DurationRepT, typename DurationT, typename CallbackT>
@@ -690,18 +708,10 @@ Timer::SharedPtr create_wall_timer(
   CallbackT && callback, rclcpp::CallbackGroup::SharedPtr group = nullptr)
 {
   return std::make_shared<AgnocastTimer>(
-    node, period, std::forward<CallbackT>(callback), group);
+    node->create_wall_timer(period, std::forward<CallbackT>(callback), group));
 }
 
-// Forward declaration of Node (defined in node.hpp) so create_timer can accept a wrapper
-// Node pointer. Callers of create_timer should include node.hpp.
-class Node;
-
-template <typename DurationRepT, typename DurationT, typename CallbackT>
-Timer::SharedPtr create_timer(
-  Node * node, std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
-  rclcpp::CallbackGroup::SharedPtr group = nullptr);
-
+#if 0  // Client/Service wrappers disabled for the initial port.
 // ===================== Client =====================
 // Unified callback signature: receives `std::shared_ptr<const Response>`. In Agnocast mode the
 // underlying ipc_shared_ptr is held alive through an aliased shared_ptr so zero-copy semantics
@@ -900,6 +910,7 @@ typename Service<ServiceT>::SharedPtr create_service(
   return std::make_shared<AgnocastService<ServiceT>>(
     node, service_name, std::move(callback), qos, group);
 }
+#endif  // Client/Service wrappers disabled
 
 }  // namespace autoware::agnocast_wrapper
 
@@ -918,8 +929,6 @@ typename Service<ServiceT>::SharedPtr create_service(
 namespace autoware::agnocast_wrapper
 {
 
-// Type-erased timer wrapper (rclcpp-only build). Mirrors the agnocast-build API so
-// callers can use the same Timer::SharedPtr type regardless of build mode.
 class Timer
 {
 public:
@@ -966,10 +975,17 @@ Timer::SharedPtr create_timer(
   rclcpp::Node * node, std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
   rclcpp::CallbackGroup::SharedPtr group = nullptr)
 {
-  auto t = rclcpp::create_wall_timer(
-    period, std::forward<CallbackT>(callback), group, node->get_node_base_interface().get(),
-    node->get_node_timers_interface().get());
-  return std::make_shared<ROS2Timer>(std::move(t));
+  return std::make_shared<ROS2Timer>(rclcpp::create_timer(
+    node, node->get_clock(), period, std::forward<CallbackT>(callback), group));
+}
+
+template <typename DurationRepT, typename DurationT, typename CallbackT>
+Timer::SharedPtr create_wall_timer(
+  rclcpp::Node * node, std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
+  rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return std::make_shared<ROS2Timer>(
+    node->create_wall_timer(period, std::forward<CallbackT>(callback), group));
 }
 
 }  // namespace autoware::agnocast_wrapper
@@ -983,9 +999,11 @@ Timer::SharedPtr create_timer(
 #define AUTOWARE_PUBLISHER_PTR(MessageT) typename rclcpp::Publisher<MessageT>::SharedPtr
 #define AUTOWARE_POLLING_SUBSCRIBER_PTR(MessageT) \
   typename autoware_utils_rclcpp::InterProcessPollingSubscriber<MessageT>::SharedPtr
-#define AUTOWARE_TIMER_PTR rclcpp::TimerBase::SharedPtr
+#define AUTOWARE_TIMER_PTR autoware::agnocast_wrapper::Timer::SharedPtr
+#if 0  // Client/Service wrappers disabled for the initial port.
 #define AUTOWARE_CLIENT_PTR(ServiceT) typename rclcpp::Client<ServiceT>::SharedPtr
 #define AUTOWARE_SERVICE_PTR(ServiceT) typename rclcpp::Service<ServiceT>::SharedPtr
+#endif
 
 #define AUTOWARE_CREATE_SUBSCRIPTION(message_type, topic, qos, callback, options) \
   this->create_subscription<message_type>(topic, qos, callback, options)
@@ -996,6 +1014,10 @@ Timer::SharedPtr create_timer(
 #define AUTOWARE_CREATE_POLLING_SUBSCRIBER(message_type, topic, qos)                       \
   autoware_utils_rclcpp::InterProcessPollingSubscriber<message_type>::create_subscription( \
     this, topic, qos)
+#define AUTOWARE_CREATE_TIMER(period, callback) \
+  autoware::agnocast_wrapper::create_timer(this, period, callback)
+#define AUTOWARE_CREATE_WALL_TIMER(period, callback) \
+  autoware::agnocast_wrapper::create_wall_timer(this, period, callback)
 
 #define AUTOWARE_SUBSCRIPTION_OPTIONS rclcpp::SubscriptionOptions
 #define AUTOWARE_PUBLISHER_OPTIONS rclcpp::PublisherOptions

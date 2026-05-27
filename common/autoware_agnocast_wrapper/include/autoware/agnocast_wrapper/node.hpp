@@ -255,33 +255,28 @@ public:
 
   // ===== Timer =====
   template <typename DurationRepT, typename DurationT, typename CallbackT>
+  Timer::SharedPtr create_timer(
+    std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
+    rclcpp::CallbackGroup::SharedPtr group = nullptr)
+  {
+    return visit_node([&](auto & n) -> Timer::SharedPtr {
+      return autoware::agnocast_wrapper::create_timer(
+        n.get(), period, std::forward<CallbackT>(callback), group);
+    });
+  }
+
+  template <typename DurationRepT, typename DurationT, typename CallbackT>
   Timer::SharedPtr create_wall_timer(
     std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
     rclcpp::CallbackGroup::SharedPtr group = nullptr)
   {
     return visit_node([&](auto & n) -> Timer::SharedPtr {
-      using NodeT = std::decay_t<decltype(*n)>;
-      if constexpr (std::is_same_v<NodeT, agnocast::Node>) {
-        return std::make_shared<AgnocastTimer>(
-          n.get(), period, std::forward<CallbackT>(callback), group);
-      } else {
-        return std::make_shared<ROS2Timer>(
-          n.get(), period, std::forward<CallbackT>(callback), group);
-      }
+      return autoware::agnocast_wrapper::create_wall_timer(
+        n.get(), period, std::forward<CallbackT>(callback), group);
     });
   }
 
-  // Convenience wrapper so callers can write node->create_timer(period, cb) instead of
-  // reaching for rclcpp::create_timer (which requires a valid rclcpp context — not
-  // guaranteed under AgnocastOnly executors).
-  template <typename DurationRepT, typename DurationT, typename CallbackT>
-  Timer::SharedPtr create_timer(
-    std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
-    rclcpp::CallbackGroup::SharedPtr group = nullptr)
-  {
-    return create_wall_timer(period, std::forward<CallbackT>(callback), group);
-  }
-
+#if 0  // Client/Service wrappers disabled for the initial port.
   // ===== Client =====
   template <typename ServiceT>
   typename Client<ServiceT>::SharedPtr create_client(
@@ -316,6 +311,7 @@ public:
       }
     });
   }
+#endif  // Client/Service wrappers disabled
 
   // ===== Internal node access (for Executor) =====
   // Callers must check is_using_agnocast() before calling get_agnocast_node()/get_rclcpp_node().
@@ -372,14 +368,20 @@ std::shared_ptr<rclcpp::Node> to_rclcpp_node(const std::shared_ptr<T> & node)
   return node->get_rclcpp_node();
 }
 
-// Definition of the create_timer free function declared in autoware_agnocast_wrapper.hpp.
-// Defined here because it needs the full Node definition (template create_timer method).
 template <typename DurationRepT, typename DurationT, typename CallbackT>
 Timer::SharedPtr create_timer(
   Node * node, std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
-  rclcpp::CallbackGroup::SharedPtr group)
+  rclcpp::CallbackGroup::SharedPtr group = nullptr)
 {
   return node->create_timer(period, std::forward<CallbackT>(callback), group);
+}
+
+template <typename DurationRepT, typename DurationT, typename CallbackT>
+Timer::SharedPtr create_wall_timer(
+  Node * node, std::chrono::duration<DurationRepT, DurationT> period, CallbackT && callback,
+  rclcpp::CallbackGroup::SharedPtr group = nullptr)
+{
+  return node->create_wall_timer(period, std::forward<CallbackT>(callback), group);
 }
 
 }  // namespace autoware::agnocast_wrapper

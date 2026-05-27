@@ -40,13 +40,14 @@ namespace message_filters
 {
 
 /// @brief Wrapper message_filters Subscriber that switches between
-///        rclcpp and agnocast message_filters at runtime.
+///        rclcpp and agnocast message_filters at runtime via use_agnocast().
 ///
-/// Accepts an `autoware::agnocast_wrapper::Node *` so that nodes inheriting the wrapper Node
-/// can use the message_filters API. Internally dispatches to the correct underlying node:
-/// - agnocast mode: `node->get_agnocast_node()` fed to `agnocast::message_filters::Subscriber<M,
-///   agnocast::Node>`
-/// - rclcpp mode:   `node->get_rclcpp_node()`  fed to `::message_filters::Subscriber<M>`
+/// Accepts either an `autoware::agnocast_wrapper::Node *` or a plain `rclcpp::Node *`. The
+/// rclcpp::Node* overload exists so that nodes whose base is `rclcpp::Node` — e.g. filters
+/// templated on `rclcpp::Node` to opt out of the wrapper migration — can still use this
+/// Subscriber type without a compile-time mismatch. At runtime that overload requires
+/// use_agnocast()=false; otherwise it logs an error and skips subscribing because a
+/// rclcpp::Node has no agnocast::Node backing.
 template <class M>
 class Subscriber
 {
@@ -55,6 +56,13 @@ public:
 
   Subscriber(
     autoware::agnocast_wrapper::Node * node, const std::string & topic,
+    const rmw_qos_profile_t qos = rmw_qos_profile_default)
+  {
+    subscribe(node, topic, qos);
+  }
+
+  Subscriber(
+    rclcpp::Node * node, const std::string & topic,
     const rmw_qos_profile_t qos = rmw_qos_profile_default)
   {
     subscribe(node, topic, qos);
@@ -69,6 +77,26 @@ public:
     } else {
       rclcpp_sub_.subscribe(node->get_rclcpp_node().get(), topic, qos);
     }
+  }
+
+  // Subscribe via a plain rclcpp::Node*. Requires use_agnocast()=false because a rclcpp::Node
+  // has no agnocast::Node backing. If use_agnocast()=true at runtime this is a logic error
+  // (the wrapper-on side of the same process should not be paired with a rclcpp::Node-only
+  // call site), so we log and skip rather than silently routing through an empty agnocast_sub_.
+  void subscribe(
+    rclcpp::Node * node, const std::string & topic,
+    const rmw_qos_profile_t qos = rmw_qos_profile_default)
+  {
+    if (use_agnocast()) {
+      RCLCPP_ERROR(
+        node->get_logger(),
+        "agnocast_wrapper::message_filters::Subscriber::subscribe(rclcpp::Node*) called while "
+        "use_agnocast()=true. A rclcpp::Node has no agnocast backing — this subscriber will be "
+        "left unsubscribed. Switch the node to autoware::agnocast_wrapper::Node, or run with "
+        "ENABLE_AGNOCAST=0.");
+      return;
+    }
+    rclcpp_sub_.subscribe(node, topic, qos);
   }
 
   void unsubscribe()
@@ -96,15 +124,15 @@ private:
 /// @brief Wrapper ApproximateTime Synchronizer that switches between
 ///        rclcpp and agnocast message_filters at runtime.
 ///
-/// The callback receives `(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0)&,
-///                         const AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1)&)`.
-/// In agnocast mode, message_ptrs are created from the ipc_shared_ptrs,
-/// preserving zero-copy semantics during the callback lifetime.
+/// The callback uses the rclcpp message_filters legacy signature
+///   `(const M0::ConstSharedPtr&, const M1::ConstSharedPtr&)`.
+/// In agnocast mode the wrapper promotes the agnocast event into an aliasing
+/// std::shared_ptr<const M> that keeps the underlying ipc_shared_ptr alive — zero-copy is
+/// preserved for the duration of the callback. This lets caller code register callbacks the
+/// same way whether built with USE_AGNOCAST_ENABLED=on or off.
 ///
 /// @note Current limitations:
-///   - Only ApproximateTime synchronization policy is supported (no ExactTime).
 ///   - Maximum 2 message types per Synchronizer.
-///   - connectInput() is not supported; pass Subscriber references at construction time.
 ///
 /// @code
 /// using namespace autoware::agnocast_wrapper::message_filters;
@@ -117,21 +145,29 @@ private:
 /// using Policy = sync_policies::ApproximateTime<
 ///     sensor_msgs::msg::Image, sensor_msgs::msg::CameraInfo>;
 /// auto sync = std::make_shared<Synchronizer<Policy>>(Policy(10), image_sub, info_sub);
+/// // or: build the synchronizer first and connect later (mirrors rclcpp message_filters pattern)
+/// // auto sync = std::make_shared<Synchronizer<Policy>>(Policy(10));
+/// // sync->connectInput(image_sub, info_sub);
 ///
 /// sync->registerCallback(
 ///   std::bind(&MyNode::onSynchronized, this, std::placeholders::_1, std::placeholders::_2));
 ///
 /// // Where the callback method signature is:
 /// // void onSynchronized(
-/// //   const AUTOWARE_MESSAGE_CONST_SHARED_PTR(sensor_msgs::msg::Image) & img,
-/// //   const AUTOWARE_MESSAGE_CONST_SHARED_PTR(sensor_msgs::msg::CameraInfo) & info);
+/// //   const sensor_msgs::msg::Image::ConstSharedPtr & img,
+/// //   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info);
 /// @endcode
 template <typename M0, typename M1>
 class ApproximateTimeSynchronizer
 {
 public:
+  // Legacy callback signature, matching rclcpp message_filters Synchronizer. Under
+  // USE_AGNOCAST_ENABLED=on the wrapper internally converts the agnocast MessageEvent into an
+  // aliasing shared_ptr<const M> that keeps the ipc_shared_ptr alive — zero-copy is preserved
+  // for the duration of the callback. Using the legacy signature lets caller code register
+  // callbacks the same way regardless of build mode, with `std::bind(&Cls::cb, this, _1, _2)`.
   using Callback = std::function<void(
-    const AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0) &, const AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1) &)>;
+    const typename M0::ConstSharedPtr &, const typename M1::ConstSharedPtr &)>;
 
   ApproximateTimeSynchronizer(uint32_t queue_size, Subscriber<M0> & sub0, Subscriber<M1> & sub1)
   {
@@ -144,13 +180,40 @@ public:
     }
   }
 
-  void registerCallback(Callback callback)
+  // Queue-only constructor. Pair with connectInput() to attach subscribers after construction,
+  // matching the rclcpp message_filters Synchronizer pattern.
+  explicit ApproximateTimeSynchronizer(uint32_t queue_size)
   {
-    stored_callback_ = std::move(callback);
+    if (use_agnocast()) {
+      agnocast_sync_ = std::make_unique<AgnocastSync>(AgnocastPolicy(queue_size));
+    } else {
+      rclcpp_sync_ = std::make_unique<RclcppSync>(RclcppPolicy(queue_size));
+    }
+  }
+
+  void connectInput(Subscriber<M0> & sub0, Subscriber<M1> & sub1)
+  {
+    if (use_agnocast()) {
+      agnocast_sync_->connectInput(sub0.agnocast_subscriber(), sub1.agnocast_subscriber());
+    } else {
+      rclcpp_sync_->connectInput(sub0.rclcpp_subscriber(), sub1.rclcpp_subscriber());
+    }
+  }
+
+  // Templated to accept any callable (lambdas, std::bind results, std::function). Internally
+  // we wrap into the Callback std::function so both backends see a uniform target.
+  template <typename CallbackT>
+  void registerCallback(CallbackT && callback)
+  {
+    stored_callback_ = Callback(std::forward<CallbackT>(callback));
     if (use_agnocast()) {
       agnocast_sync_->registerCallback(&ApproximateTimeSynchronizer::agnocastCallbackAdapter, this);
     } else {
-      rclcpp_sync_->registerCallback(&ApproximateTimeSynchronizer::rclcppCallbackAdapter, this);
+      // rclcpp Synchronizer wraps the callable in std::bind with 9 placeholders internally
+      // (signal9). A raw 2-arg lambda fails to compile there; std::bind absorbs the extra
+      // placeholders, so wrap the stored callback in a 2-arg std::bind before handing it over.
+      rclcpp_sync_->registerCallback(
+        std::bind(stored_callback_, std::placeholders::_1, std::placeholders::_2));
     }
   }
 
@@ -162,20 +225,15 @@ private:
 
   void agnocastCallbackAdapter(const M0Event & e0, const M1Event & e1)
   {
-    // Wrap ipc_shared_ptr in message_ptr (copies ipc_shared_ptr refcount, not data)
-    const auto p0 =
-      AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0)(agnocast::ipc_shared_ptr<const M0>(e0.getMessage()));
-    const auto p1 =
-      AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1)(agnocast::ipc_shared_ptr<const M1>(e1.getMessage()));
-    stored_callback_(p0, p1);
-  }
-
-  void rclcppCallbackAdapter(
-    const typename M0::ConstSharedPtr & m0, const typename M1::ConstSharedPtr & m1)
-  {
-    const auto p0 = AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0)(std::shared_ptr<const M0>(m0));
-    const auto p1 = AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1)(std::shared_ptr<const M1>(m1));
-    stored_callback_(p0, p1);
+    // Promote the agnocast ipc_shared_ptr into a std::shared_ptr<const M> using shared_ptr's
+    // aliasing constructor so the ipc_shared_ptr's refcount (and the underlying shared-memory
+    // page) stays alive for as long as the callback holds the pointer — zero-copy semantics
+    // are preserved for the callback's lifetime.
+    auto m0_holder = std::make_shared<agnocast::ipc_shared_ptr<const M0>>(e0.getMessage());
+    auto m1_holder = std::make_shared<agnocast::ipc_shared_ptr<const M1>>(e1.getMessage());
+    typename M0::ConstSharedPtr m0_ptr(m0_holder, m0_holder->get());
+    typename M1::ConstSharedPtr m1_ptr(m1_holder, m1_holder->get());
+    stored_callback_(m0_ptr, m1_ptr);
   }
 
   using RclcppPolicy = ::message_filters::sync_policies::ApproximateTime<M0, M1>;
@@ -196,7 +254,7 @@ class ExactTimeSynchronizer
 {
 public:
   using Callback = std::function<void(
-    const AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0) &, const AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1) &)>;
+    const typename M0::ConstSharedPtr &, const typename M1::ConstSharedPtr &)>;
 
   ExactTimeSynchronizer(uint32_t queue_size, Subscriber<M0> & sub0, Subscriber<M1> & sub1)
   {
@@ -209,13 +267,34 @@ public:
     }
   }
 
-  void registerCallback(Callback callback)
+  // Queue-only constructor. Pair with connectInput() to attach subscribers after construction.
+  explicit ExactTimeSynchronizer(uint32_t queue_size)
   {
-    stored_callback_ = std::move(callback);
+    if (use_agnocast()) {
+      agnocast_sync_ = std::make_unique<AgnocastSync>(AgnocastPolicy(queue_size));
+    } else {
+      rclcpp_sync_ = std::make_unique<RclcppSync>(RclcppPolicy(queue_size));
+    }
+  }
+
+  void connectInput(Subscriber<M0> & sub0, Subscriber<M1> & sub1)
+  {
+    if (use_agnocast()) {
+      agnocast_sync_->connectInput(sub0.agnocast_subscriber(), sub1.agnocast_subscriber());
+    } else {
+      rclcpp_sync_->connectInput(sub0.rclcpp_subscriber(), sub1.rclcpp_subscriber());
+    }
+  }
+
+  template <typename CallbackT>
+  void registerCallback(CallbackT && callback)
+  {
+    stored_callback_ = Callback(std::forward<CallbackT>(callback));
     if (use_agnocast()) {
       agnocast_sync_->registerCallback(&ExactTimeSynchronizer::agnocastCallbackAdapter, this);
     } else {
-      rclcpp_sync_->registerCallback(&ExactTimeSynchronizer::rclcppCallbackAdapter, this);
+      rclcpp_sync_->registerCallback(
+        std::bind(stored_callback_, std::placeholders::_1, std::placeholders::_2));
     }
   }
 
@@ -227,19 +306,11 @@ private:
 
   void agnocastCallbackAdapter(const M0Event & e0, const M1Event & e1)
   {
-    const auto p0 =
-      AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0)(agnocast::ipc_shared_ptr<const M0>(e0.getMessage()));
-    const auto p1 =
-      AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1)(agnocast::ipc_shared_ptr<const M1>(e1.getMessage()));
-    stored_callback_(p0, p1);
-  }
-
-  void rclcppCallbackAdapter(
-    const typename M0::ConstSharedPtr & m0, const typename M1::ConstSharedPtr & m1)
-  {
-    const auto p0 = AUTOWARE_MESSAGE_CONST_SHARED_PTR(M0)(std::shared_ptr<const M0>(m0));
-    const auto p1 = AUTOWARE_MESSAGE_CONST_SHARED_PTR(M1)(std::shared_ptr<const M1>(m1));
-    stored_callback_(p0, p1);
+    auto m0_holder = std::make_shared<agnocast::ipc_shared_ptr<const M0>>(e0.getMessage());
+    auto m1_holder = std::make_shared<agnocast::ipc_shared_ptr<const M1>>(e1.getMessage());
+    typename M0::ConstSharedPtr m0_ptr(m0_holder, m0_holder->get());
+    typename M1::ConstSharedPtr m1_ptr(m1_holder, m1_holder->get());
+    stored_callback_(m0_ptr, m1_ptr);
   }
 
   using RclcppPolicy = ::message_filters::sync_policies::ExactTime<M0, M1>;
@@ -293,6 +364,14 @@ public:
   : ApproximateTimeSynchronizer<M0, M1>(policy.queue_size, sub0, sub1)
   {
   }
+
+  explicit Synchronizer(sync_policies::ApproximateTime<M0, M1> policy)
+  : ApproximateTimeSynchronizer<M0, M1>(policy.queue_size)
+  {
+  }
+
+  // Mirrors the rclcpp message_filters Synchronizer constructor that takes only a queue size.
+  explicit Synchronizer(uint32_t queue_size) : ApproximateTimeSynchronizer<M0, M1>(queue_size) {}
 };
 
 template <typename M0, typename M1>
@@ -304,6 +383,13 @@ public:
   : ExactTimeSynchronizer<M0, M1>(policy.queue_size, sub0, sub1)
   {
   }
+
+  explicit Synchronizer(sync_policies::ExactTime<M0, M1> policy)
+  : ExactTimeSynchronizer<M0, M1>(policy.queue_size)
+  {
+  }
+
+  explicit Synchronizer(uint32_t queue_size) : ExactTimeSynchronizer<M0, M1>(queue_size) {}
 };
 
 }  // namespace message_filters
