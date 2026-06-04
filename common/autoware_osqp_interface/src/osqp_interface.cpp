@@ -352,7 +352,14 @@ int64_t OSQPInterface::initializeProblem(
 
   // Setup workspace
   OSQPWorkspace * workspace;
-  m_exitflag = osqp_setup(&workspace, m_data.get(), m_settings.get());
+  {
+    const auto t0 = std::chrono::system_clock::now();
+    m_exitflag = osqp_setup(&workspace, m_data.get(), m_settings.get());
+    const auto t1 = std::chrono::system_clock::now();
+    const auto dt = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    RCLCPP_INFO(
+      rclcpp::get_logger("osqp_interface"), "[MPC_TIMING] osqp_setup time: %ld [us]", dt);
+  }
   m_work.reset(workspace);
   m_work_initialized = true;
 
@@ -362,7 +369,14 @@ int64_t OSQPInterface::initializeProblem(
 OSQPResult OSQPInterface::solve()
 {
   // Solve Problem
+  const auto t0 = std::chrono::system_clock::now();
   int32_t exit_flag = static_cast<int32_t>(osqp_solve(m_work.get()));
+  {
+    const auto t1 = std::chrono::system_clock::now();
+    const auto dt = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    RCLCPP_INFO(
+      rclcpp::get_logger("osqp_interface"), "[MPC_TIMING] osqp_solve time: %ld [us]", dt);
+  }
 
   /********************
    * EXTRACT SOLUTION
