@@ -1,8 +1,8 @@
-# autoware_core
+## TIEV IV core
 
-- An [Autoware](https://github.com/autowarefoundation/autoware) repository that contains a basic set of high-quality, stable ROS packages for autonomous driving.
+This repository is a fork of [autowarefoundation/autoware_core](https://github.com/autowarefoundation/autoware_core).
 
-- Although this repository is currently empty, porting of code from Universe to Core will begin once the interfaces for Autoware Core/Universe have been finalized, as per ongoing [Autoware Architecture WG](https://github.com/autowarefoundation/autoware/discussions?discussions_q=label%3Aarchitecture_wg) discussions.
-- A more detailed explanation about Autoware Core can be found on the [Autoware concepts documentation page](https://autowarefoundation.github.io/autoware-documentation/main/design/autoware-concepts/#the-core-module).
-
-- For researchers and developers who want to extend the functionality of Autoware Core with experimental, cutting-edge ROS packages, see [Autoware Universe](https://github.com/autowarefoundation/autoware_universe).
+* `tier4/main` branch: only holds CI workflow files. The source codes are unused for development. **Do not create PRs against this branch** unless you are working for CI.
+* `awf-latest` branch: a mirror from Autoware Foundation. **Do not create any PRs against this branch.**
+  * If you need an immediate mirror refresh, run [TIER IV internal workflow](https://github.com/tier4/auto-evaluator/actions/workflows/sync-awf-latest.yaml).
+* release branches: hotfix branches for TIER IV product release purposes.
