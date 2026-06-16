@@ -9,6 +9,8 @@
   <arg name="lanelet2_map_loader_param_path" default="$(find-pkg-share autoware_core_map)/config/lanelet2_map_loader.param.yaml"/>
   <arg name="map_projection_loader_param_path" default="$(find-pkg-share autoware_core_map)/config/map_projection_loader.param.yaml"/>
   <arg name="pointcloud_map_loader_param_path" default="$(find-pkg-share autoware_core_map)/config/pointcloud_map_loader.param.yaml"/>
+  <arg name="differential_visualizer_param_path" default="$(find-pkg-share autoware_map_loader)/config/differential_pointcloud_map_visualizer.param.yaml"/>
+  <arg name="enable_differential_pointcloud_map_visualizer" default="false" description="Publish differential pointcloud map to a topic for RViz"/>
 
   <group>
     <push-ros-namespace namespace="map"/>
@@ -36,6 +38,12 @@
     <node pkg="autoware_lanelet2_map_visualizer" exec="autoware_lanelet2_map_visualizer" name="lanelet2_map_visualization" output="both">
       <remap from="input/lanelet2_map" to="vector_map"/>
       <remap from="output/lanelet2_map_marker" to="vector_map_marker"/>
+    </node>
+
+    <node pkg="autoware_map_loader" exec="autoware_differential_pointcloud_map_visualizer" name="differential_pointcloud_map_visualizer" output="screen" if="$(var enable_differential_pointcloud_map_visualizer)">
+      <param from="$(var differential_visualizer_param_path)"/>
+      <remap from="output/differential_pointcloud_map" to="differential_pointcloud_map"/>
+      <remap from="input/pose" to="/localization/pose_estimator/pose_with_covariance"/>
     </node>
   </group>
 </launch>
