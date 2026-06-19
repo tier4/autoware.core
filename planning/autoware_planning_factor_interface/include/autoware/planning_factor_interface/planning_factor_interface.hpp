@@ -24,13 +24,13 @@
 namespace autoware::planning_factor_interface
 {
 
-class PlanningFactorInterface : public PlanningFactorBuilder
+class PlanningFactorInterface
 {
 public:
   PlanningFactorInterface(
     rclcpp::Node * node, const std::string & name, bool enable_console_output = false,
     int throttle_duration_ms = 1000)
-  : PlanningFactorBuilder{name},
+  : builder_{name},
     pub_factors_{
       node->create_publisher<PlanningFactorArray>("/planning/planning_factors/" + name, 1)},
     clock_{node->get_clock()},
@@ -39,12 +39,60 @@ public:
   {
   }
 
+  template <class PointType>
+  void add(
+    const std::vector<PointType> & points, const Pose & ego_pose, const Pose & control_point_pose,
+    const uint16_t behavior, const SafetyFactorArray & safety_factors,
+    const bool is_driving_forward = true, const double velocity = 0.0,
+    const double shift_length = 0.0, const std::string & detail = "")
+  {
+    builder_.add(
+      points, ego_pose, control_point_pose, behavior, safety_factors, is_driving_forward, velocity,
+      shift_length, detail);
+  }
+
+  template <class PointType>
+  void add(
+    const std::vector<PointType> & points, const Pose & ego_pose, const Pose & start_pose,
+    const Pose & end_pose, const uint16_t behavior, const SafetyFactorArray & safety_factors,
+    const bool is_driving_forward = true, const double start_velocity = 0.0,
+    const double end_velocity = 0.0, const double start_shift_length = 0.0,
+    const double end_shift_length = 0.0, const std::string & detail = "")
+  {
+    builder_.add(
+      points, ego_pose, start_pose, end_pose, behavior, safety_factors, is_driving_forward,
+      start_velocity, end_velocity, start_shift_length, end_shift_length, detail);
+  }
+
+  void add(
+    const double distance, const Pose & control_point_pose, const uint16_t behavior,
+    const SafetyFactorArray & safety_factors, const bool is_driving_forward = true,
+    const double velocity = 0.0, const double shift_length = 0.0, const std::string & detail = "")
+  {
+    builder_.add(
+      distance, control_point_pose, behavior, safety_factors, is_driving_forward, velocity,
+      shift_length, detail);
+  }
+
+  void add(
+    const double start_distance, const double end_distance, const Pose & start_pose,
+    const Pose & end_pose, const uint16_t behavior, const SafetyFactorArray & safety_factors,
+    const bool is_driving_forward = true, const double start_velocity = 0.0,
+    const double end_velocity = 0.0, const double start_shift_length = 0.0,
+    const double end_shift_length = 0.0, const std::string & detail = "")
+  {
+    builder_.add(
+      start_distance, end_distance, start_pose, end_pose, behavior, safety_factors,
+      is_driving_forward, start_velocity, end_velocity, start_shift_length, end_shift_length,
+      detail);
+  }
+
   /**
    * @brief publish planning factors.
    */
   void publish()
   {
-    const auto msg = make_array(clock_->now());
+    const auto msg = builder_.make_array(clock_->now());
 
     pub_factors_->publish(msg);
 
@@ -52,13 +100,13 @@ public:
       print_factors_to_console(msg);
     }
 
-    clear();
+    builder_.clear();
   }
 
   /**
    * @brief get the current factors (for test purpose).
    */
-  using PlanningFactorBuilder::get_factors;
+  std::vector<PlanningFactor> get_factors() const { return builder_.get_factors(); }
 
 private:
   /**
@@ -71,11 +119,14 @@ private:
       "Planning factor:\n" + autoware_internal_planning_msgs::msg::to_yaml(msg);
     if (throttle_duration_ms_ > 0) {
       RCLCPP_INFO_THROTTLE(
-        rclcpp::get_logger(name()), *clock_, throttle_duration_ms_, "%s", output_str.c_str());
+        rclcpp::get_logger(builder_.name()), *clock_, throttle_duration_ms_, "%s",
+        output_str.c_str());
     } else {
-      RCLCPP_INFO(rclcpp::get_logger(name()), "%s", output_str.c_str());
+      RCLCPP_INFO(rclcpp::get_logger(builder_.name()), "%s", output_str.c_str());
     }
   }
+
+  PlanningFactorBuilder builder_;
 
   rclcpp::Publisher<PlanningFactorArray>::SharedPtr pub_factors_;
 
