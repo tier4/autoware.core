@@ -27,6 +27,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::planning_factor_interface
@@ -123,9 +124,9 @@ public:
   {
     const auto control_point = autoware_internal_planning_msgs::build<ControlPoint>()
                                  .pose(control_point_pose)
-                                 .velocity(velocity)
-                                 .shift_length(shift_length)
-                                 .distance(distance);
+                                 .velocity(static_cast<float>(velocity))
+                                 .shift_length(static_cast<float>(shift_length))
+                                 .distance(static_cast<float>(distance));
 
     const auto factor = autoware_internal_planning_msgs::build<PlanningFactor>()
                           .module(name_)
@@ -163,15 +164,15 @@ public:
   {
     const auto control_start_point = autoware_internal_planning_msgs::build<ControlPoint>()
                                        .pose(start_pose)
-                                       .velocity(start_velocity)
-                                       .shift_length(start_shift_length)
-                                       .distance(start_distance);
+                                       .velocity(static_cast<float>(start_velocity))
+                                       .shift_length(static_cast<float>(start_shift_length))
+                                       .distance(static_cast<float>(start_distance));
 
     const auto control_end_point = autoware_internal_planning_msgs::build<ControlPoint>()
                                      .pose(end_pose)
-                                     .velocity(end_velocity)
-                                     .shift_length(end_shift_length)
-                                     .distance(end_distance);
+                                     .velocity(static_cast<float>(end_velocity))
+                                     .shift_length(static_cast<float>(end_shift_length))
+                                     .distance(static_cast<float>(end_distance));
 
     const auto factor = autoware_internal_planning_msgs::build<PlanningFactor>()
                           .module(name_)
@@ -187,12 +188,12 @@ public:
   /**
    * @brief get the current factors (for test purpose).
    */
-  std::vector<PlanningFactor> get_factors() const { return factors_; }
+  [[nodiscard]] std::vector<PlanningFactor> get_factors() const { return factors_; }
 
   /**
    * @brief build a PlanningFactorArray message without clearing the internal buffer.
    */
-  PlanningFactorArray make_array(const builtin_interfaces::msg::Time & stamp) const
+  [[nodiscard]] PlanningFactorArray make_array(const builtin_interfaces::msg::Time & stamp) const
   {
     PlanningFactorArray msg;
     msg.header.frame_id = "map";
@@ -203,7 +204,7 @@ public:
 
   void clear() { factors_.clear(); }
 
-  const std::string & name() const { return name_; }
+  [[nodiscard]] const std::string & name() const { return name_; }
 
 private:
   std::string name_;

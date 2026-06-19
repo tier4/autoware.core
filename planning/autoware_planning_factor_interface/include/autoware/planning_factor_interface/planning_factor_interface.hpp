@@ -20,6 +20,7 @@
 
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace autoware::planning_factor_interface
 {

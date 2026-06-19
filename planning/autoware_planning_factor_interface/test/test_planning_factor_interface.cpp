@@ -128,7 +128,7 @@ TEST(PlanningFactorBuilderTest, MakeArrayDoesNotClear)
   b.add(1.0, make_pose(1.0, 0.0), 0u, sf);
 
   builtin_interfaces::msg::Time stamp;
-  b.make_array(stamp);
+  [[maybe_unused]] const auto arr = b.make_array(stamp);
 
   EXPECT_EQ(b.get_factors().size(), 1u);
 }
@@ -221,4 +221,3 @@ TEST_F(PlanningFactorInterfaceTest, GetFactorsReturnsEmptyAfterClear)
   interface_->publish();
   EXPECT_TRUE(interface_->get_factors().empty());
 }
-
