@@ -19,8 +19,7 @@
 
 namespace autoware::planning_factor_interface
 {
-template void
-PlanningFactorBuilder::add<autoware_internal_planning_msgs::msg::PathPointWithLaneId>(
+template void PlanningFactorBuilder::add<autoware_internal_planning_msgs::msg::PathPointWithLaneId>(
   const std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> &, const Pose &,
   const Pose &, const uint16_t behavior, const SafetyFactorArray &, const bool, const double,
   const double, const std::string &);
@@ -33,8 +32,7 @@ template void PlanningFactorBuilder::add<autoware_planning_msgs::msg::Trajectory
   const uint16_t behavior, const SafetyFactorArray &, const bool, const double, const double,
   const std::string &);
 
-template void
-PlanningFactorBuilder::add<autoware_internal_planning_msgs::msg::PathPointWithLaneId>(
+template void PlanningFactorBuilder::add<autoware_internal_planning_msgs::msg::PathPointWithLaneId>(
   const std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> &, const Pose &,
   const Pose &, const Pose &, const uint16_t behavior, const SafetyFactorArray &, const bool,
   const double, const double, const double, const double, const std::string &);
