@@ -222,26 +222,3 @@ TEST_F(PlanningFactorInterfaceTest, GetFactorsReturnsEmptyAfterClear)
   EXPECT_TRUE(interface_->get_factors().empty());
 }
 
-TEST_F(PlanningFactorInterfaceTest, PublishExternalBuilderClearsIt)
-{
-  PlanningFactorBuilder external("external_module");
-  SafetyFactorArray sf;
-  external.add(5.0, make_pose(5.0, 0.0), 0u, sf);
-  ASSERT_EQ(external.get_factors().size(), 1u);
-  interface_->publish(external);
-  EXPECT_TRUE(external.get_factors().empty());
-}
-
-TEST_F(PlanningFactorInterfaceTest, PublishExternalBuilderDoesNotAffectInternal)
-{
-  SafetyFactorArray sf;
-  interface_->add(1.0, make_pose(1.0, 0.0), 0u, sf);
-
-  PlanningFactorBuilder external("external_module");
-  external.add(5.0, make_pose(5.0, 0.0), 0u, sf);
-  interface_->publish(external);
-
-  // internal builder_ is untouched
-  EXPECT_EQ(interface_->get_factors().size(), 1u);
-}
-

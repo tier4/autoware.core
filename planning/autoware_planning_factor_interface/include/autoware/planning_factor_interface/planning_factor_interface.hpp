@@ -92,15 +92,7 @@ public:
    */
   void publish()
   {
-    publish(builder_);
-  }
-
-  /**
-   * @brief publish planning factors from an externally managed builder.
-   */
-  void publish(PlanningFactorBuilder & builder)
-  {
-    const auto msg = builder.make_array(clock_->now());
+    const auto msg = builder_.make_array(clock_->now());
 
     pub_factors_->publish(msg);
 
@@ -108,7 +100,7 @@ public:
       print_factors_to_console(msg);
     }
 
-    builder.clear();
+    builder_.clear();
   }
 
   /**
