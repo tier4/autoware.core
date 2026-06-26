@@ -34,6 +34,8 @@ GNSSPoser::GNSSPoser(const rclcpp::NodeOptions & node_options)
   gnss_base_frame_(declare_parameter<std::string>("gnss_base_frame")),
   map_frame_(declare_parameter<std::string>("map_frame")),
   use_gnss_ins_orientation_(declare_parameter<bool>("use_gnss_ins_orientation")),
+  position_offset_(declare_parameter<double>("position_offset")),
+  position_variance_(declare_parameter<double>("position_variance")),
   msg_gnss_ins_orientation_stamped_(
     std::make_shared<autoware_sensing_msgs::msg::GnssInsOrientationStamped>()),
   gnss_pose_pub_method_(static_cast<int>(declare_parameter<int>("gnss_pose_pub_method")))
@@ -175,6 +177,11 @@ void GNSSPoser::callback_nav_sat_fix(
   gnss_base_pose_msg.header.frame_id = map_frame_;
   tf2::toMsg(tf_map2base_link, gnss_base_pose_msg.pose);
 
+  // akebono offset
+  gnss_base_pose_msg.pose.position.x += position_offset_;
+  gnss_base_pose_msg.pose.position.y += position_offset_;
+  // gnss_base_pose_msg.pose.position.z -= 41.3;
+
   // publish gnss_base_link pose in map frame
   pose_pub_->publish(gnss_base_pose_msg);
 
@@ -182,10 +189,18 @@ void GNSSPoser::callback_nav_sat_fix(
   geometry_msgs::msg::PoseWithCovarianceStamped gnss_base_pose_cov_msg;
   gnss_base_pose_cov_msg.header = gnss_base_pose_msg.header;
   gnss_base_pose_cov_msg.pose.pose = gnss_base_pose_msg.pose;
-  gnss_base_pose_cov_msg.pose.covariance[7 * 0] =
-    can_get_covariance(*nav_sat_fix_msg_ptr) ? nav_sat_fix_msg_ptr->position_covariance[0] : 10.0;
-  gnss_base_pose_cov_msg.pose.covariance[7 * 1] =
-    can_get_covariance(*nav_sat_fix_msg_ptr) ? nav_sat_fix_msg_ptr->position_covariance[4] : 10.0;
+
+  if (position_variance_ == 0.0) {
+    gnss_base_pose_cov_msg.pose.covariance[7 * 0] =
+      can_get_covariance(*nav_sat_fix_msg_ptr) ? nav_sat_fix_msg_ptr->position_covariance[0] : 10.0;
+    gnss_base_pose_cov_msg.pose.covariance[7 * 1] =
+      can_get_covariance(*nav_sat_fix_msg_ptr) ? nav_sat_fix_msg_ptr->position_covariance[4] : 10.0;
+  }
+  else {
+    gnss_base_pose_cov_msg.pose.covariance[7 * 0] = position_variance_;
+    gnss_base_pose_cov_msg.pose.covariance[7 * 1] = position_variance_;
+  }
+
   gnss_base_pose_cov_msg.pose.covariance[7 * 2] =
     can_get_covariance(*nav_sat_fix_msg_ptr) ? nav_sat_fix_msg_ptr->position_covariance[8] : 10.0;
 
@@ -216,7 +231,7 @@ void GNSSPoser::callback_gnss_ins_orientation_stamped(
 
 bool GNSSPoser::is_fixed(const sensor_msgs::msg::NavSatStatus & nav_sat_status_msg)
 {
-  return nav_sat_status_msg.status >= sensor_msgs::msg::NavSatStatus::STATUS_FIX;
+  return nav_sat_status_msg.status >= sensor_msgs::msg::NavSatStatus::STATUS_GBAS_FIX;
 }
 
 bool GNSSPoser::can_get_covariance(const sensor_msgs::msg::NavSatFix & nav_sat_fix_msg)
