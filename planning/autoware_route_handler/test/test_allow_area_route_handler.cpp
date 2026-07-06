@@ -112,6 +112,17 @@ LaneletRoute makeLaneAreaLaneRoute()
   return route;
 }
 
+LaneletRoute makeLaneAreaGoalRoute()
+{
+  LaneletRoute route;
+  route.header.frame_id = "map";
+  route.start_pose = autoware::test_utils::createPose(0.5, 5.0, 0.0, 0.0, 0.0, 0.0);
+  route.goal_pose = autoware::test_utils::createPose(1.0, 15.0, 0.0, 0.0, 0.0, 0.0);
+  route.segments.push_back(makeLaneSegment(kEntryLaneId));
+  route.segments.push_back(makeAreaSegment(kAreaId));
+  return route;
+}
+
 std::shared_ptr<RouteHandler> makeRouteHandler(const bool allow_area)
 {
   const auto map = makeLaneAreaLaneMap();
@@ -119,6 +130,16 @@ std::shared_ptr<RouteHandler> makeRouteHandler(const bool allow_area)
   auto route_handler = std::make_shared<RouteHandler>(map_bin);
   route_handler->setAllowArea(allow_area);
   route_handler->setRoute(makeLaneAreaLaneRoute());
+  return route_handler;
+}
+
+std::shared_ptr<RouteHandler> makeGoalInAreaRouteHandler(const bool allow_area)
+{
+  const auto map = makeLaneAreaLaneMap();
+  const auto map_bin = to_autoware_map_msgs(map);
+  auto route_handler = std::make_shared<RouteHandler>(map_bin);
+  route_handler->setAllowArea(allow_area);
+  route_handler->setRoute(makeLaneAreaGoalRoute());
   return route_handler;
 }
 
@@ -228,6 +249,116 @@ TEST(AllowAreaRouteHandler, getPreviousLaneletsWithinRouteReturnsFalseAtRouteSta
   lanelet::ConstLanelets previous_lanelets;
   EXPECT_FALSE(route_handler->getPreviousLaneletsWithinRoute(entry_lanelet, &previous_lanelets));
   EXPECT_TRUE(previous_lanelets.empty());
+}
+
+TEST(AllowAreaRouteHandler, routeEndingInAreaDoesNotThrowAndLaneletsAreIntact)
+{
+  const auto map = makeLaneAreaLaneMap();
+  auto route_handler = std::make_shared<RouteHandler>(to_autoware_map_msgs(map));
+  route_handler->setAllowArea(true);
+
+  ASSERT_NO_THROW(route_handler->setRoute(makeLaneAreaGoalRoute()));
+  ASSERT_TRUE(route_handler->isHandlerReady());
+
+  const auto entry_lanelet = route_handler->getLaneletsFromId(kEntryLaneId);
+  lanelet::ConstLanelets previous_lanelets;
+  EXPECT_FALSE(route_handler->getPreviousLaneletsWithinRoute(entry_lanelet, &previous_lanelets));
+  EXPECT_TRUE(previous_lanelets.empty());
+}
+
+TEST(AllowAreaRouteHandler, getRouteAreasReturnsRouteAreas)
+{
+  const auto route_handler = makeRouteHandler(true);
+  ASSERT_TRUE(route_handler->isHandlerReady());
+
+  const auto & areas = route_handler->getRouteAreas();
+  ASSERT_EQ(areas.size(), 1u);
+  EXPECT_EQ(areas.front().id(), kAreaId);
+}
+
+TEST(AllowAreaRouteHandler, getRouteAreasEmptyWhenAllowAreaDisabled)
+{
+  const auto map = makeLaneAreaLaneMap();
+  RouteHandler route_handler(to_autoware_map_msgs(map));
+  route_handler.setAllowArea(false);
+
+  EXPECT_TRUE(route_handler.getRouteAreas().empty());
+}
+
+TEST(AllowAreaRouteHandler, getRouteAreaAtPosePositiveAndNegative)
+{
+  const auto route_handler = makeRouteHandler(true);
+  ASSERT_TRUE(route_handler->isHandlerReady());
+
+  const auto inside_pose = autoware::test_utils::createPose(1.0, 15.0, 0.0, 0.0, 0.0, 0.0);
+  const auto inside_area = route_handler->getRouteAreaAtPose(inside_pose);
+  ASSERT_TRUE(inside_area.has_value());
+  EXPECT_EQ(inside_area->id(), kAreaId);
+
+  const auto outside_pose = autoware::test_utils::createPose(0.5, 5.0, 0.0, 0.0, 0.0, 0.0);
+  EXPECT_FALSE(route_handler->getRouteAreaAtPose(outside_pose).has_value());
+}
+
+TEST(AllowAreaRouteHandler, isGoalInRouteAreaTrueWhenGoalInsideArea)
+{
+  const auto route_handler = makeGoalInAreaRouteHandler(true);
+  ASSERT_TRUE(route_handler->isHandlerReady());
+  EXPECT_TRUE(route_handler->isGoalInRouteArea());
+}
+
+TEST(AllowAreaRouteHandler, isGoalInRouteAreaFalseWhenGoalOutsideArea)
+{
+  const auto route_handler = makeRouteHandler(true);
+  ASSERT_TRUE(route_handler->isHandlerReady());
+  EXPECT_FALSE(route_handler->isGoalInRouteArea());
+}
+
+TEST(AllowAreaRouteHandler, getNextAreaTransitReturnsEntryAndExitLanelets)
+{
+  const auto route_handler = makeRouteHandler(true);
+  ASSERT_TRUE(route_handler->isHandlerReady());
+
+  const auto entry_lanelet = route_handler->getLaneletsFromId(kEntryLaneId);
+  const auto area_transit = route_handler->getNextAreaTransit(entry_lanelet);
+  ASSERT_TRUE(area_transit.has_value());
+  EXPECT_EQ(area_transit->area.id(), kAreaId);
+  ASSERT_EQ(area_transit->entry_lanelets.size(), 1u);
+  EXPECT_EQ(area_transit->entry_lanelets.front().id(), kEntryLaneId);
+  ASSERT_EQ(area_transit->exit_lanelets.size(), 1u);
+  EXPECT_EQ(area_transit->exit_lanelets.front().id(), kExitLaneId);
+}
+
+TEST(AllowAreaRouteHandler, getNextAreaTransitTerminalCaseHasEmptyExitLanelets)
+{
+  const auto route_handler = makeGoalInAreaRouteHandler(true);
+  ASSERT_TRUE(route_handler->isHandlerReady());
+
+  const auto entry_lanelet = route_handler->getLaneletsFromId(kEntryLaneId);
+  const auto area_transit = route_handler->getNextAreaTransit(entry_lanelet);
+  ASSERT_TRUE(area_transit.has_value());
+  EXPECT_EQ(area_transit->area.id(), kAreaId);
+  ASSERT_EQ(area_transit->entry_lanelets.size(), 1u);
+  EXPECT_EQ(area_transit->entry_lanelets.front().id(), kEntryLaneId);
+  EXPECT_TRUE(area_transit->exit_lanelets.empty());
+}
+
+TEST(AllowAreaRouteHandler, getNextAreaTransitNulloptWhenNoAreaAhead)
+{
+  const auto route_handler = makeRouteHandler(true);
+  ASSERT_TRUE(route_handler->isHandlerReady());
+
+  const auto exit_lanelet = route_handler->getLaneletsFromId(kExitLaneId);
+  EXPECT_FALSE(route_handler->getNextAreaTransit(exit_lanelet).has_value());
+}
+
+TEST(AllowAreaRouteHandler, getNextAreaTransitNulloptWhenAllowAreaDisabled)
+{
+  const auto map = makeLaneAreaLaneMap();
+  RouteHandler route_handler(to_autoware_map_msgs(map));
+  route_handler.setAllowArea(false);
+
+  const auto entry_lanelet = route_handler.getLaneletsFromId(kEntryLaneId);
+  EXPECT_FALSE(route_handler.getNextAreaTransit(entry_lanelet).has_value());
 }
 
 }  // namespace autoware::route_handler::test

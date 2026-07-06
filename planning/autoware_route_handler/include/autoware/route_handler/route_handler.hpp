@@ -78,6 +78,13 @@ struct PiecewiseWaypoints
 };
 using Waypoints = std::vector<PiecewiseWaypoints>;
 
+struct AreaTransit
+{
+  lanelet::ConstArea area;
+  lanelet::ConstLanelets entry_lanelets;
+  lanelet::ConstLanelets exit_lanelets;
+};
+
 class RouteHandler
 {
 public:
@@ -296,6 +303,10 @@ public:
   lanelet::ConstLanelet getLaneletsFromId(const lanelet::Id id) const;
   lanelet::ConstArea getAreaFromId(const lanelet::Id id) const;
   lanelet::ConstLanelets getLaneletsFromIds(const lanelet::Ids & ids) const;
+  const std::vector<lanelet::ConstArea> & getRouteAreas() const;
+  std::optional<lanelet::ConstArea> getRouteAreaAtPose(const Pose & pose) const;
+  bool isGoalInRouteArea() const;
+  std::optional<AreaTransit> getNextAreaTransit(const lanelet::ConstLanelet & current_lane) const;
   lanelet::ConstLanelets getLaneletSequence(
     const lanelet::ConstLanelet & lanelet, const Pose & current_pose,
     const double backward_distance, const double forward_distance) const;

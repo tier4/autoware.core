@@ -518,12 +518,18 @@ void RouteHandler::setLaneletsFromRouteMsg()
   if (!route_ptr_->segments.empty()) {
     goal_lanelets_.reserve(route_ptr_->segments.back().primitives.size());
     for (const auto & primitive : route_ptr_->segments.back().primitives) {
+      if (primitive.primitive_type == "area") {
+        continue;
+      }
       const auto id = primitive.id;
       const auto & llt = lanelet_map_ptr_->laneletLayer.get(id);
       goal_lanelets_.push_back(llt);
     }
     start_lanelets_.reserve(route_ptr_->segments.front().primitives.size());
     for (const auto & primitive : route_ptr_->segments.front().primitives) {
+      if (primitive.primitive_type == "area") {
+        continue;
+      }
       const auto id = primitive.id;
       const auto & llt = lanelet_map_ptr_->laneletLayer.get(id);
       start_lanelets_.push_back(llt);
@@ -672,6 +678,75 @@ lanelet::ConstLanelet RouteHandler::getLaneletsFromId(const lanelet::Id id) cons
 lanelet::ConstArea RouteHandler::getAreaFromId(const lanelet::Id id) const
 {
   return lanelet_map_ptr_->areaLayer.get(id);
+}
+
+const std::vector<lanelet::ConstArea> & RouteHandler::getRouteAreas() const
+{
+  return route_areas_;
+}
+
+std::optional<lanelet::ConstArea> RouteHandler::getRouteAreaAtPose(const Pose & pose) const
+{
+  if (!allow_area_ || route_areas_.empty() || !route_ptr_) {
+    return std::nullopt;
+  }
+
+  const lanelet::BasicPoint2d point(pose.position.x, pose.position.y);
+  for (const auto & area : route_areas_) {
+    if (lanelet::geometry::inside(area, point)) {
+      return area;
+    }
+  }
+  return std::nullopt;
+}
+
+bool RouteHandler::isGoalInRouteArea() const
+{
+  if (!route_ptr_) {
+    return false;
+  }
+  return getRouteAreaAtPose(route_ptr_->goal_pose).has_value();
+}
+
+std::optional<AreaTransit> RouteHandler::getNextAreaTransit(
+  const lanelet::ConstLanelet & current_lane) const
+{
+  if (!allow_area_ || route_areas_.empty() || !route_ptr_ || route_ptr_->segments.empty()) {
+    return std::nullopt;
+  }
+
+  const auto segment_index = findRouteSegmentIndexForLanelet(current_lane.id());
+  if (!segment_index.has_value()) {
+    return std::nullopt;
+  }
+
+  std::optional<size_t> area_segment_index;
+  for (size_t i = segment_index.value() + 1; i < route_ptr_->segments.size(); ++i) {
+    const auto & segment = route_ptr_->segments.at(i);
+    if (segment.preferred_primitive.primitive_type == "area") {
+      area_segment_index = i;
+      break;
+    }
+  }
+  if (!area_segment_index.has_value()) {
+    return std::nullopt;
+  }
+
+  AreaTransit area_transit;
+  area_transit.area =
+    getAreaFromId(route_ptr_->segments.at(area_segment_index.value()).preferred_primitive.id);
+
+  const auto entry_segment_index = findPreviousLaneSegmentIndex(area_segment_index.value());
+  if (entry_segment_index.has_value()) {
+    area_transit.entry_lanelets = laneletsFromRouteSegment(entry_segment_index.value());
+  }
+
+  const auto exit_segment_index = findNextLaneSegmentIndex(area_segment_index.value());
+  if (exit_segment_index.has_value()) {
+    area_transit.exit_lanelets = laneletsFromRouteSegment(exit_segment_index.value());
+  }
+
+  return area_transit;
 }
 
 bool RouteHandler::isDeadEndLanelet(const lanelet::ConstLanelet & lanelet) const
