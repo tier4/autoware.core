@@ -46,7 +46,6 @@ def _spawn_once(context):
         Node(
             package="ros2agnocast_discovery_agent",
             executable="discovery_agent",
-            name="agnocast_discovery_agent",
             # Pin to root: which include wins the deduplication race is arbitrary,
             # so without this the singleton would inherit some node's namespace.
             namespace="/",
