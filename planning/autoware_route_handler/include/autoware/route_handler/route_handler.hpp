@@ -305,8 +305,19 @@ public:
   lanelet::ConstLanelets getLaneletsFromIds(const lanelet::Ids & ids) const;
   const std::vector<lanelet::ConstArea> & getRouteAreas() const;
   std::optional<lanelet::ConstArea> getRouteAreaAtPose(const Pose & pose) const;
+  /**
+   * @brief Find the vehicle-routable freespace Area of the MAP (not restricted to the current
+   * route) that contains the given pose. Requires setAllowArea(true).
+   */
+  std::optional<lanelet::ConstArea> getFreespaceAreaAtPose(const Pose & pose) const;
   bool isGoalInRouteArea() const;
   std::optional<AreaTransit> getNextAreaTransit(const lanelet::ConstLanelet & current_lane) const;
+  /**
+   * @brief Build the AreaTransit (entry/exit lanelets) for the route segment of the given Area.
+   * Unlike getNextAreaTransit this does not need a current lane, so it also works when ego is
+   * already inside the Area (e.g. Area→Lane routes where the area is the first route segment).
+   */
+  std::optional<AreaTransit> getAreaTransit(const lanelet::Id area_id) const;
   lanelet::ConstLanelets getLaneletSequence(
     const lanelet::ConstLanelet & lanelet, const Pose & current_pose,
     const double backward_distance, const double forward_distance) const;
@@ -474,6 +485,15 @@ private:
     const lanelet::ConstLanelets & start_lanelets, const lanelet::ConstLanelet & goal_lanelet,
     const bool consider_no_drivable_lanes,
     lanelet::ConstLaneletOrAreas * path_lanelets_or_areas) const;
+  /**
+   * @brief Plan a route whose START checkpoint lies inside a freespace Area (Area→Lane).
+   * Routes directly from the Area node of the routing graph, so no start lanelet (and no
+   * lanelet-angle constraint) is involved.
+   */
+  bool planAreaStartPathBetweenCheckpoints(
+    const lanelet::ConstArea & start_area, const Pose & start_checkpoint,
+    const Pose & goal_checkpoint, lanelet::ConstLaneletOrAreas * path_lanelets_or_areas) const;
+  std::optional<AreaTransit> makeAreaTransitFromSegmentIndex(const size_t area_segment_index) const;
 };
 
 /// @brief custom routing cost with infinity cost for no drivable lanes

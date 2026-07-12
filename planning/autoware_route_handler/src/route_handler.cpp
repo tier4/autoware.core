@@ -700,12 +700,66 @@ std::optional<lanelet::ConstArea> RouteHandler::getRouteAreaAtPose(const Pose & 
   return std::nullopt;
 }
 
+std::optional<lanelet::ConstArea> RouteHandler::getFreespaceAreaAtPose(const Pose & pose) const
+{
+  if (!allow_area_ || !lanelet_map_ptr_) {
+    return std::nullopt;
+  }
+
+  const lanelet::BasicPoint2d point(pose.position.x, pose.position.y);
+  constexpr double search_margin = 0.1;
+  const lanelet::BoundingBox2d bbox(
+    lanelet::BasicPoint2d(point.x() - search_margin, point.y() - search_margin),
+    lanelet::BasicPoint2d(point.x() + search_margin, point.y() + search_margin));
+
+  for (const auto & area : lanelet_map_ptr_->areaLayer.search(bbox)) {
+    const std::string subtype = area.attributeOr(lanelet::AttributeName::Subtype, std::string(""));
+    if (subtype != "freespace") {
+      continue;
+    }
+    const std::string participant_vehicle =
+      area.attributeOr(lanelet::AttributeNamesString::ParticipantVehicle, std::string("yes"));
+    if (participant_vehicle == "no") {
+      continue;
+    }
+    const lanelet::ConstArea const_area(area);
+    if (lanelet::geometry::inside(const_area, point)) {
+      return const_area;
+    }
+  }
+  return std::nullopt;
+}
+
 bool RouteHandler::isGoalInRouteArea() const
 {
   if (!route_ptr_) {
     return false;
   }
   return getRouteAreaAtPose(route_ptr_->goal_pose).has_value();
+}
+
+std::optional<AreaTransit> RouteHandler::makeAreaTransitFromSegmentIndex(
+  const size_t area_segment_index) const
+{
+  if (!route_ptr_ || area_segment_index >= route_ptr_->segments.size()) {
+    return std::nullopt;
+  }
+
+  AreaTransit area_transit;
+  area_transit.area =
+    getAreaFromId(route_ptr_->segments.at(area_segment_index).preferred_primitive.id);
+
+  const auto entry_segment_index = findPreviousLaneSegmentIndex(area_segment_index);
+  if (entry_segment_index.has_value()) {
+    area_transit.entry_lanelets = laneletsFromRouteSegment(entry_segment_index.value());
+  }
+
+  const auto exit_segment_index = findNextLaneSegmentIndex(area_segment_index);
+  if (exit_segment_index.has_value()) {
+    area_transit.exit_lanelets = laneletsFromRouteSegment(exit_segment_index.value());
+  }
+
+  return area_transit;
 }
 
 std::optional<AreaTransit> RouteHandler::getNextAreaTransit(
@@ -720,33 +774,30 @@ std::optional<AreaTransit> RouteHandler::getNextAreaTransit(
     return std::nullopt;
   }
 
-  std::optional<size_t> area_segment_index;
   for (size_t i = segment_index.value() + 1; i < route_ptr_->segments.size(); ++i) {
     const auto & segment = route_ptr_->segments.at(i);
     if (segment.preferred_primitive.primitive_type == "area") {
-      area_segment_index = i;
-      break;
+      return makeAreaTransitFromSegmentIndex(i);
     }
   }
-  if (!area_segment_index.has_value()) {
+  return std::nullopt;
+}
+
+std::optional<AreaTransit> RouteHandler::getAreaTransit(const lanelet::Id area_id) const
+{
+  if (!allow_area_ || route_areas_.empty() || !route_ptr_ || route_ptr_->segments.empty()) {
     return std::nullopt;
   }
 
-  AreaTransit area_transit;
-  area_transit.area =
-    getAreaFromId(route_ptr_->segments.at(area_segment_index.value()).preferred_primitive.id);
-
-  const auto entry_segment_index = findPreviousLaneSegmentIndex(area_segment_index.value());
-  if (entry_segment_index.has_value()) {
-    area_transit.entry_lanelets = laneletsFromRouteSegment(entry_segment_index.value());
+  for (size_t i = 0; i < route_ptr_->segments.size(); ++i) {
+    const auto & segment = route_ptr_->segments.at(i);
+    if (
+      segment.preferred_primitive.primitive_type == "area" &&
+      segment.preferred_primitive.id == area_id) {
+      return makeAreaTransitFromSegmentIndex(i);
+    }
   }
-
-  const auto exit_segment_index = findNextLaneSegmentIndex(area_segment_index.value());
-  if (exit_segment_index.has_value()) {
-    area_transit.exit_lanelets = laneletsFromRouteSegment(exit_segment_index.value());
-  }
-
-  return area_transit;
+  return std::nullopt;
 }
 
 bool RouteHandler::isDeadEndLanelet(const lanelet::ConstLanelet & lanelet) const
@@ -2851,11 +2902,62 @@ bool RouteHandler::hasNoDrivableLaneInPath(const lanelet::routing::LaneletOrArea
   return false;
 }
 
+bool RouteHandler::planAreaStartPathBetweenCheckpoints(
+  const lanelet::ConstArea & start_area, const Pose & start_checkpoint,
+  const Pose & goal_checkpoint, lanelet::ConstLaneletOrAreas * path_lanelets_or_areas) const
+{
+  const auto goal_lanelet = getGoalRoadLaneletForCheckpoint(goal_checkpoint);
+  if (!goal_lanelet) {
+    RCLCPP_WARN_STREAM(
+      logger_, "Failed to find closest lanelet for the goal of an area-start route."
+                 << std::endl
+                 << " - start checkpoint: " << toString(start_checkpoint) << std::endl
+                 << " - goal checkpoint: " << toString(goal_checkpoint) << std::endl);
+    return false;
+  }
+
+  // The start is the Area itself: no start lanelet exists and no lanelet-angle constraint
+  // applies (the in-area maneuver is planned by A* downstream, which handles any start yaw).
+  const auto optional_path = routing_graph_ptr_->shortestPathIncludingAreas(
+    lanelet::ConstLaneletOrArea(start_area), lanelet::ConstLaneletOrArea(goal_lanelet.value()), 0);
+  if (!optional_path) {
+    RCLCPP_WARN_STREAM(
+      logger_, "Failed to find a route from the freespace area containing the start checkpoint!"
+                 << std::endl
+                 << " - start checkpoint: " << toString(start_checkpoint) << std::endl
+                 << " - goal checkpoint: " << toString(goal_checkpoint) << std::endl
+                 << " - start area id: " << start_area.id() << std::endl
+                 << " - goal lane id: " << goal_lanelet.value().id() << std::endl);
+    return false;
+  }
+
+  path_lanelets_or_areas->reserve(optional_path->size());
+  for (const auto & elem : *optional_path) {
+    path_lanelets_or_areas->push_back(elem);
+  }
+  return true;
+}
+
 bool RouteHandler::planPathLaneletsBetweenCheckpoints(
   const Pose & start_checkpoint, const Pose & goal_checkpoint,
   lanelet::ConstLaneletOrAreas * path_lanelets_or_areas,
   const bool consider_no_drivable_lanes) const
 {
+  // A start checkpoint inside a freespace Area (ego parked in the area) has no lanelet under
+  // it: the nearest-lanelet fallback would produce a lane-only route that skips the area and
+  // never reaches ego. Route from the Area node of the routing graph instead (Area→Lane).
+  // A pose that is ALSO on a road lanelet (the entry/exit lanes overlap the area polygon near
+  // the junction) keeps the regular lane-based routing.
+  if (getRoadLaneletsAtPose(start_checkpoint).empty()) {
+    if (const auto start_area = getFreespaceAreaAtPose(start_checkpoint)) {
+      if (planAreaStartPathBetweenCheckpoints(
+            *start_area, start_checkpoint, goal_checkpoint, path_lanelets_or_areas)) {
+        return true;
+      }
+      // fall through to the regular lane-based resolution as a last resort
+    }
+  }
+
   const auto start_lanelets = getStartRoadLaneletsForCheckpoint(start_checkpoint);
   if (start_lanelets.empty()) {
     RCLCPP_WARN_STREAM(
