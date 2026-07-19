@@ -17,6 +17,14 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTOR MultiThreadedExecutor
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_gtest(test_${PROJECT_NAME}_fit
+    test/test_map_height_fitter_fit.cpp
+  )
+  target_link_libraries(test_${PROJECT_NAME}_fit ${PROJECT_NAME} ${PCL_LIBRARIES})
+endif()
+
 autoware_ament_auto_package(
   USE_SCOPED_HEADER_INSTALL_DIR
   INSTALL_TO_SHARE
