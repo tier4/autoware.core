@@ -29,7 +29,7 @@ private:
 public:
   explicit EkfLocalizationTriggerModule(rclcpp::Node * node);
   void wait_for_service();
-  void send_request(bool flag, bool need_spin = false) const;
+  void send_request(bool flag) const;
 
 private:
   rclcpp::Node * node_;
